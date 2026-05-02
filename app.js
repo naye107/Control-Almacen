@@ -1,6 +1,7 @@
 const STORAGE_KEY = "fertistock.v1";
 let backendAvailable = false;
 let saveQueue = Promise.resolve();
+let appEventsBound = false;
 
 const state = {
   products: [],
@@ -9,6 +10,12 @@ const state = {
 };
 
 const elements = {
+  appShell: document.querySelector("#app-shell"),
+  loginScreen: document.querySelector("#login-screen"),
+  loginForm: document.querySelector("#login-form"),
+  loginUser: document.querySelector("#login-user"),
+  loginPassword: document.querySelector("#login-password"),
+  loginError: document.querySelector("#login-error"),
   sidebar: document.querySelector(".sidebar"),
   viewTitle: document.querySelector("#view-title"),
   moduleToggle: document.querySelector("#module-toggle"),
@@ -37,7 +44,8 @@ const elements = {
   purchaseProduct: document.querySelector("#purchase-product"),
   outputProduct: document.querySelector("#output-product"),
   availableStock: document.querySelector("#available-stock"),
-  cancelProductEdit: document.querySelector("#cancel-product-edit")
+  cancelProductEdit: document.querySelector("#cancel-product-edit"),
+  logoutButton: document.querySelector("#logout-button")
 };
 
 const productForm = document.querySelector("#product-form");
@@ -53,6 +61,77 @@ const today = () => new Date().toISOString().slice(0, 10);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 const toNumber = (value) => Number.parseFloat(value || "0");
 const normalize = (value) => String(value || "").trim().toLowerCase();
+
+function showLogin(message = "") {
+  elements.appShell.hidden = true;
+  elements.loginScreen.hidden = false;
+  elements.loginError.hidden = !message;
+  elements.loginError.textContent = message || "Usuario o clave incorrectos.";
+  elements.loginPassword.value = "";
+  elements.loginUser.focus();
+}
+
+function showApp() {
+  elements.loginScreen.hidden = true;
+  elements.appShell.hidden = false;
+}
+
+async function checkSession() {
+  if (window.location.protocol === "file:") return true;
+
+  try {
+    const response = await fetch("/api/session", {
+      cache: "no-store",
+      credentials: "same-origin"
+    });
+    if (!response.ok) return false;
+
+    const payload = await response.json();
+    return Boolean(payload.authenticated);
+  } catch {
+    showLogin("No se pudo conectar al servidor.");
+    return false;
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+
+  elements.loginError.hidden = true;
+
+  try {
+    const response = await fetch("/api/login", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user: elements.loginUser.value.trim(),
+        password: elements.loginPassword.value
+      })
+    });
+
+    if (!response.ok) {
+      showLogin("Usuario o clave incorrectos.");
+      return;
+    }
+
+    await startApp();
+  } catch {
+    showLogin("No se pudo conectar al servidor.");
+  }
+}
+
+async function handleLogout() {
+  if (window.location.protocol !== "file:") {
+    await fetch("/api/logout", {
+      method: "POST",
+      credentials: "same-origin"
+    }).catch(() => {});
+  }
+
+  setState({ products: [], purchases: [], outputs: [] });
+  showLogin("Sesion cerrada.");
+}
 
 function normalizeState(value) {
   return {
@@ -90,7 +169,14 @@ async function loadState() {
 
   if (window.location.protocol !== "file:") {
     try {
-      const response = await fetch("/api/state", { cache: "no-store" });
+      const response = await fetch("/api/state", {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (response.status === 401) {
+        showLogin("Inicie sesion para continuar.");
+        return false;
+      }
       if (!response.ok) throw new Error("No se pudo conectar al servidor.");
 
       const serverState = normalizeState(await response.json());
@@ -104,7 +190,7 @@ async function loadState() {
           await saveState();
         }
       }
-      return;
+      return true;
     } catch {
       backendAvailable = false;
       showToast("Servidor no disponible. Se usara guardado local en este navegador.");
@@ -112,6 +198,7 @@ async function loadState() {
   }
 
   setState(localState);
+  return true;
 }
 
 function saveState() {
@@ -126,10 +213,15 @@ function saveState() {
     .then(async () => {
       const response = await fetch("/api/state", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: snapshot
       });
 
+      if (response.status === 401) {
+        showLogin("Sesion vencida. Ingrese nuevamente.");
+        return;
+      }
       if (!response.ok) throw new Error("No se pudo guardar.");
       localStorage.setItem(STORAGE_KEY, snapshot);
     })
@@ -761,6 +853,9 @@ function handleTableAction(event) {
 }
 
 function bindEvents() {
+  if (appEventsBound) return;
+  appEventsBound = true;
+
   elements.moduleToggle.addEventListener("click", () => {
     setMobileNav(!elements.sidebar.classList.contains("nav-open"));
   });
@@ -780,15 +875,35 @@ function bindEvents() {
   elements.onlyLowStock.addEventListener("change", renderStock);
   elements.outputProduct.addEventListener("change", updateAvailableStock);
   document.querySelector("#export-data").addEventListener("click", exportCsv);
+  elements.logoutButton.addEventListener("click", handleLogout);
   document.querySelector("#print-stock").addEventListener("click", () => window.print());
   document.body.addEventListener("click", handleTableAction);
 }
 
-async function init() {
-  await loadState();
+function bindLoginEvents() {
+  elements.loginForm.addEventListener("submit", handleLogin);
+}
+
+async function startApp() {
+  const loaded = await loadState();
+  if (!loaded) return;
+
   setFormDefaults();
   bindEvents();
   renderAll();
+  showApp();
+}
+
+async function init() {
+  bindLoginEvents();
+
+  const authenticated = await checkSession();
+  if (!authenticated) {
+    showLogin();
+    return;
+  }
+
+  await startApp();
 }
 
 init();

@@ -8,6 +8,7 @@ El proyecto ya incluye `render.yaml`, que crea:
 
 - Un Web Service Node.js.
 - Un disco persistente en `/var/data`.
+- Variables secretas para el login.
 - Health check en `/api/health`.
 
 ## Pasos
@@ -17,8 +18,11 @@ El proyecto ya incluye `render.yaml`, que crea:
 3. En Render, vaya a `New` y elija `Blueprint`.
 4. Conecte el repositorio de GitHub donde subio este proyecto.
 5. Render detectara `render.yaml`.
-6. Apruebe la creacion del servicio.
-7. Cuando termine el deploy, Render le dara una URL como:
+6. Cuando Render pida variables secretas, escriba:
+   - `APP_USER`: su usuario, por ejemplo `admin`
+   - `APP_PASSWORD`: una clave segura
+7. Apruebe la creacion del servicio.
+8. Cuando termine el deploy, Render le dara una URL como:
    - `https://japurima-almacen.onrender.com`
 
 ## Variables
@@ -26,6 +30,8 @@ El proyecto ya incluye `render.yaml`, que crea:
 En Render quedaran asi:
 
 - `DATA_DIR=/var/data`
+- `APP_USER`: secreto, lo escribe usted
+- `APP_PASSWORD`: secreto, lo escribe usted
 
 El archivo de datos se guardara en:
 
@@ -54,11 +60,4 @@ Para comenzar, use un solo servicio con disco persistente. Mas adelante, si el s
 
 ## Seguridad
 
-Si publica el sistema sin usuario y clave, cualquier persona con la URL podra entrar.
-
-Para volver a activar clave, agregue estas variables en Render:
-
-```text
-APP_USER=admin
-APP_PASSWORD=una-clave-segura
-```
+Use una clave larga y cambiela si sospecha que alguien mas la conoce.

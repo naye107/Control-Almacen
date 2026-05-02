@@ -10,9 +10,11 @@ const DATA_FILE = path.join(DATA_DIR, "inventory.json");
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY_SIZE = 1024 * 1024;
-const APP_USER = process.env.APP_USER || "";
-const APP_PASSWORD = process.env.APP_PASSWORD || "";
-const AUTH_ENABLED = Boolean(APP_USER && APP_PASSWORD);
+const APP_USER = process.env.APP_USER || "admin";
+const APP_PASSWORD = process.env.APP_PASSWORD || "admin123";
+const SESSION_COOKIE = "japurima_session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+const sessions = new Map();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -67,10 +69,11 @@ function writeState(nextState) {
   fs.renameSync(tempFile, DATA_FILE);
 }
 
-function sendJson(response, statusCode, payload) {
+function sendJson(response, statusCode, payload, extraHeaders = {}) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    ...extraHeaders
   });
   response.end(JSON.stringify(payload));
 }
@@ -86,34 +89,64 @@ function safeCompare(left, right) {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function isAuthorized(request) {
-  if (!AUTH_ENABLED) return true;
+function parseCookies(request) {
+  const header = request.headers.cookie || "";
+  return header.split(";").reduce((cookies, item) => {
+    const separatorIndex = item.indexOf("=");
+    if (separatorIndex === -1) return cookies;
 
-  const header = request.headers.authorization || "";
-  const [scheme, encoded] = header.split(" ");
-
-  if (scheme !== "Basic" || !encoded) return false;
-
-  try {
-    const decoded = Buffer.from(encoded, "base64").toString("utf8");
-    const separatorIndex = decoded.indexOf(":");
-    if (separatorIndex === -1) return false;
-
-    const user = decoded.slice(0, separatorIndex);
-    const password = decoded.slice(separatorIndex + 1);
-    return safeCompare(user, APP_USER) && safeCompare(password, APP_PASSWORD);
-  } catch {
-    return false;
-  }
+    const key = item.slice(0, separatorIndex).trim();
+    const value = item.slice(separatorIndex + 1).trim();
+    cookies[key] = decodeURIComponent(value);
+    return cookies;
+  }, {});
 }
 
-function requestLogin(response) {
-  response.writeHead(401, {
-    "Content-Type": "text/plain; charset=utf-8",
-    "WWW-Authenticate": 'Basic realm="JAPURIMA"',
-    "Cache-Control": "no-store"
+function isSecureRequest(request) {
+  return request.headers["x-forwarded-proto"] === "https" || Boolean(request.socket.encrypted);
+}
+
+function sessionCookie(token, request) {
+  const secure = isSecureRequest(request) ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
+}
+
+function clearSessionCookie(request) {
+  const secure = isSecureRequest(request) ? "; Secure" : "";
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+}
+
+function createSession(user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  sessions.set(token, {
+    user,
+    expiresAt: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
   });
-  response.end("Ingrese usuario y clave para acceder al sistema.");
+  return token;
+}
+
+function getSession(request) {
+  const token = parseCookies(request)[SESSION_COOKIE];
+  if (!token) return null;
+
+  const session = sessions.get(token);
+  if (!session) return null;
+
+  if (session.expiresAt <= Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+
+  return { token, ...session };
+}
+
+function destroySession(request) {
+  const token = parseCookies(request)[SESSION_COOKIE];
+  if (token) sessions.delete(token);
+}
+
+function isLoginValid(user, password) {
+  return safeCompare(user, APP_USER) && safeCompare(password, APP_PASSWORD);
 }
 
 function readJsonBody(request) {
@@ -143,6 +176,49 @@ function readJsonBody(request) {
 async function handleApi(request, response) {
   if (request.method === "GET" && request.url === "/api/health") {
     sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (request.method === "GET" && request.url === "/api/session") {
+    const session = getSession(request);
+    sendJson(response, 200, {
+      authenticated: Boolean(session),
+      user: session?.user || null
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && request.url === "/api/login") {
+    try {
+      const payload = await readJsonBody(request);
+      const user = String(payload.user || "");
+      const password = String(payload.password || "");
+
+      if (!isLoginValid(user, password)) {
+        sendJson(response, 401, { ok: false, error: "INVALID_LOGIN" });
+        return true;
+      }
+
+      const token = createSession(user);
+      sendJson(response, 200, { ok: true, user }, {
+        "Set-Cookie": sessionCookie(token, request)
+      });
+    } catch {
+      sendJson(response, 400, { ok: false, error: "INVALID_JSON" });
+    }
+    return true;
+  }
+
+  if (request.method === "POST" && request.url === "/api/logout") {
+    destroySession(request);
+    sendJson(response, 200, { ok: true }, {
+      "Set-Cookie": clearSessionCookie(request)
+    });
+    return true;
+  }
+
+  if (request.url.startsWith("/api/") && !getSession(request)) {
+    sendJson(response, 401, { ok: false, error: "UNAUTHORIZED" });
     return true;
   }
 
@@ -222,16 +298,6 @@ function getNetworkUrls() {
 ensureDataFile();
 
 const server = http.createServer(async (request, response) => {
-  if (request.url === "/api/health") {
-    await handleApi(request, response);
-    return;
-  }
-
-  if (!isAuthorized(request)) {
-    requestLogin(response);
-    return;
-  }
-
   const handled = await handleApi(request, response);
   if (!handled) serveStatic(request, response);
 });
@@ -252,7 +318,7 @@ server.listen(PORT, HOST, () => {
   console.log("NO cierre esta ventana mientras use el sistema.");
   console.log("");
   console.log(`Datos: ${DATA_FILE}`);
-  console.log(AUTH_ENABLED ? "Acceso protegido con usuario y clave." : "Acceso sin clave. Configure APP_USER y APP_PASSWORD al publicarlo.");
+  console.log(`Login: usuario "${APP_USER}". Configure APP_USER y APP_PASSWORD para cambiarlo.`);
   console.log("");
   console.log("Abra una de estas direcciones en el navegador:");
   getNetworkUrls().forEach((url) => console.log(`  ${url}`));

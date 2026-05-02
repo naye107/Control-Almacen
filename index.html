@@ -4,10 +4,30 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260502-2">
+    <link rel="stylesheet" href="styles.css?v=20260502-3">
   </head>
   <body>
-    <div class="app-shell">
+    <section class="login-screen" id="login-screen" hidden>
+      <form class="login-card" id="login-form">
+        <img class="login-logo" src="assets/japurima-logo.png" alt="Agricola Japurima S.A.">
+        <div>
+          <h1>JAPURIMA</h1>
+          <p>Control de almacen</p>
+        </div>
+        <label>
+          Usuario
+          <input id="login-user" autocomplete="username" required>
+        </label>
+        <label>
+          Clave
+          <input id="login-password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="primary-button" type="submit">Ingresar</button>
+        <p class="login-error" id="login-error" hidden>Usuario o clave incorrectos.</p>
+      </form>
+    </section>
+
+    <div class="app-shell" id="app-shell" hidden>
       <aside class="sidebar">
         <div class="brand">
           <img class="brand-logo" src="assets/japurima-logo.png" alt="Agricola Japurima S.A.">
@@ -32,6 +52,7 @@
 
         <div class="sidebar-actions">
           <button class="ghost-button" type="button" id="export-data">Exportar CSV</button>
+          <button class="ghost-button" type="button" id="logout-button">Cerrar sesion</button>
         </div>
       </aside>
 
@@ -361,6 +382,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260502-2" defer></script>
+    <script src="app.js?v=20260502-3" defer></script>
   </body>
 </html>

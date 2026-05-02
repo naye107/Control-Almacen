@@ -12,10 +12,6 @@ services:
         value: production
       - key: DATA_DIR
         value: /var/data
-      - key: APP_USER
-        sync: false
-      - key: APP_PASSWORD
-        sync: false
     disk:
       name: japurima-data
       mountPath: /var/data

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: japurima-almacen
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: APP_USER
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+    disk:
+      name: japurima-data
+      mountPath: /var/data
+      sizeGB: 1

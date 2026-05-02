@@ -1,0 +1,14 @@
+{
+  "name": "japurima-almacen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema web de control de productos de almacen JAPURIMA.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

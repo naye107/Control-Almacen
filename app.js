@@ -2,6 +2,9 @@ const STORAGE_KEY = "fertistock.v1";
 let backendAvailable = false;
 let saveQueue = Promise.resolve();
 let appEventsBound = false;
+let syncTimer = null;
+let isSyncing = false;
+let lastServerSnapshot = "";
 
 const state = {
   products: [],
@@ -61,6 +64,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 const toNumber = (value) => Number.parseFloat(value || "0");
 const normalize = (value) => String(value || "").trim().toLowerCase();
+const isServerMode = () => window.location.protocol !== "file:";
 
 function showLogin(message = "") {
   elements.appShell.hidden = true;
@@ -77,7 +81,7 @@ function showApp() {
 }
 
 async function checkSession() {
-  if (window.location.protocol === "file:") return true;
+  if (!isServerMode()) return true;
 
   try {
     const response = await fetch("/api/session", {
@@ -122,7 +126,7 @@ async function handleLogin(event) {
 }
 
 async function handleLogout() {
-  if (window.location.protocol !== "file:") {
+  if (isServerMode()) {
     await fetch("/api/logout", {
       method: "POST",
       credentials: "same-origin"
@@ -130,6 +134,7 @@ async function handleLogout() {
   }
 
   setState({ products: [], purchases: [], outputs: [] });
+  stopAutoSync();
   showLogin("Sesion cerrada.");
 }
 
@@ -167,7 +172,7 @@ function setState(nextState) {
 async function loadState() {
   const localState = readLocalState();
 
-  if (window.location.protocol !== "file:") {
+  if (isServerMode()) {
     try {
       const response = await fetch("/api/state", {
         cache: "no-store",
@@ -181,19 +186,22 @@ async function loadState() {
 
       const serverState = normalizeState(await response.json());
       backendAvailable = true;
+      lastServerSnapshot = JSON.stringify(serverState);
       setState(serverState);
 
       if (isStateEmpty(serverState) && !isStateEmpty(localState)) {
         const shouldImport = confirm("Se encontro informacion guardada en este navegador. Desea pasarla al servidor?");
         if (shouldImport) {
           setState(localState);
-          await saveState();
+          const saved = await saveState();
+          if (!saved) return false;
         }
       }
       return true;
     } catch {
       backendAvailable = false;
-      showToast("Servidor no disponible. Se usara guardado local en este navegador.");
+      showToast("No se pudo cargar informacion del servidor. Revise la conexion.");
+      return false;
     }
   }
 
@@ -205,8 +213,13 @@ function saveState() {
   const snapshot = JSON.stringify(state);
 
   if (!backendAvailable) {
+    if (isServerMode()) {
+      showToast("No se guardo: el servidor no esta disponible.");
+      return Promise.resolve(false);
+    }
+
     localStorage.setItem(STORAGE_KEY, snapshot);
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 
   saveQueue = saveQueue
@@ -220,18 +233,67 @@ function saveState() {
 
       if (response.status === 401) {
         showLogin("Sesion vencida. Ingrese nuevamente.");
-        return;
+        return false;
       }
       if (!response.ok) throw new Error("No se pudo guardar.");
-      localStorage.setItem(STORAGE_KEY, snapshot);
+      lastServerSnapshot = snapshot;
+      return true;
     })
     .catch(() => {
       backendAvailable = false;
-      localStorage.setItem(STORAGE_KEY, snapshot);
-      showToast("No se pudo guardar en el servidor. Se guardo localmente.");
+      if (!isServerMode()) {
+        localStorage.setItem(STORAGE_KEY, snapshot);
+        return true;
+      }
+
+      showToast("No se guardo: el servidor no respondio.");
+      return false;
     });
 
   return saveQueue;
+}
+
+async function refreshStateFromServer() {
+  if (!isServerMode() || !backendAvailable || elements.appShell.hidden || isSyncing) return;
+
+  isSyncing = true;
+  try {
+    const response = await fetch("/api/state", {
+      cache: "no-store",
+      credentials: "same-origin"
+    });
+
+    if (response.status === 401) {
+      stopAutoSync();
+      showLogin("Sesion vencida. Ingrese nuevamente.");
+      return;
+    }
+
+    if (!response.ok) throw new Error("No se pudo sincronizar.");
+
+    const serverState = normalizeState(await response.json());
+    const snapshot = JSON.stringify(serverState);
+    if (snapshot !== lastServerSnapshot) {
+      lastServerSnapshot = snapshot;
+      setState(serverState);
+      renderAll();
+    }
+  } catch {
+    backendAvailable = false;
+    showToast("No se pudo sincronizar con el servidor.");
+  } finally {
+    isSyncing = false;
+  }
+}
+
+function startAutoSync() {
+  if (!isServerMode() || syncTimer) return;
+  syncTimer = window.setInterval(refreshStateFromServer, 8000);
+}
+
+function stopAutoSync() {
+  window.clearInterval(syncTimer);
+  syncTimer = null;
 }
 
 function showToast(message) {
@@ -617,7 +679,7 @@ async function handleProductSubmit(event) {
     showToast("Producto guardado.");
   }
 
-  await saveState();
+  if (!(await saveState())) return;
   resetProductForm();
   renderAll();
 }
@@ -646,7 +708,7 @@ async function handlePurchaseSubmit(event) {
   }
 
   state.purchases.push(purchase);
-  await saveState();
+  if (!(await saveState())) return;
   purchaseForm.reset();
   setFormDefaults();
   renderAll();
@@ -691,7 +753,7 @@ async function handleOutputSubmit(event) {
   }
 
   state.outputs.push(output);
-  await saveState();
+  if (!(await saveState())) return;
   outputForm.reset();
   setFormDefaults();
   renderAll();
@@ -718,7 +780,7 @@ async function toggleProduct(productId) {
   if (!product) return;
 
   product.active = product.active === false;
-  await saveState();
+  if (!(await saveState())) return;
   renderAll();
   showToast(product.active ? "Producto activado." : "Producto desactivado.");
 }
@@ -739,7 +801,7 @@ async function deleteProduct(productId) {
   if (!shouldDelete) return;
 
   state.products = state.products.filter((item) => item.id !== productId);
-  await saveState();
+  if (!(await saveState())) return;
   resetProductForm();
   renderAll();
   showToast("Producto eliminado.");
@@ -759,14 +821,14 @@ async function deletePurchase(purchaseId) {
   }
 
   state.purchases = state.purchases.filter((item) => item.id !== purchaseId);
-  await saveState();
+  if (!(await saveState())) return;
   renderAll();
   showToast("Compra eliminada.");
 }
 
 async function deleteOutput(outputId) {
   state.outputs = state.outputs.filter((item) => item.id !== outputId);
-  await saveState();
+  if (!(await saveState())) return;
   renderAll();
   showToast("Salida eliminada.");
 }
@@ -874,6 +936,10 @@ function bindEvents() {
   elements.globalSearch.addEventListener("input", renderAll);
   elements.onlyLowStock.addEventListener("change", renderStock);
   elements.outputProduct.addEventListener("change", updateAvailableStock);
+  window.addEventListener("focus", refreshStateFromServer);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshStateFromServer();
+  });
   document.querySelector("#export-data").addEventListener("click", exportCsv);
   elements.logoutButton.addEventListener("click", handleLogout);
   document.querySelector("#print-stock").addEventListener("click", () => window.print());
@@ -892,6 +958,7 @@ async function startApp() {
   bindEvents();
   renderAll();
   showApp();
+  startAutoSync();
 }
 
 async function init() {

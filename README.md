@@ -30,6 +30,8 @@ Usuario local por defecto:
 
 Si el sistema esta publicado en Render, todos deben entrar con la misma URL publica de Render. Los cambios se sincronizan automaticamente cada pocos segundos; tambien puede actualizar la pagina para verlos al instante.
 
+En Render, los datos se guardan en PostgreSQL mediante `DATABASE_URL`.
+
 ## Nota
 
 Para entrar desde fuera del local o desde cualquier internet, publique el sistema siguiendo [PUBLICAR.md](PUBLICAR.md).

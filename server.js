@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const ROOT_DIR = __dirname;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(ROOT_DIR, "data"));
 const DATA_FILE = path.join(DATA_DIR, "inventory.json");
+const DATABASE_URL = process.env.DATABASE_URL || "";
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY_SIZE = 1024 * 1024;
@@ -15,6 +16,7 @@ const APP_PASSWORD = process.env.APP_PASSWORD || "admin123";
 const SESSION_COOKIE = "japurima_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 const sessions = new Map();
+let pgPool = null;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -29,13 +31,17 @@ const MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 
+function defaultState() {
+  return { products: [], purchases: [], outputs: [] };
+}
+
 function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
   if (!fs.existsSync(DATA_FILE)) {
-    writeState({ products: [], purchases: [], outputs: [] });
+    writeStateFile(defaultState());
   }
 }
 
@@ -47,18 +53,62 @@ function normalizeState(value) {
   };
 }
 
-function readState() {
+function shouldUseDatabaseSsl() {
+  if (!DATABASE_URL) return false;
+  if (DATABASE_URL.includes("sslmode=disable")) return false;
+  return !/localhost|127\.0\.0\.1/i.test(DATABASE_URL);
+}
+
+function getPgPool() {
+  if (!DATABASE_URL) return null;
+  if (pgPool) return pgPool;
+
+  const { Pool } = require("pg");
+  pgPool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: shouldUseDatabaseSsl() ? { rejectUnauthorized: false } : false
+  });
+
+  return pgPool;
+}
+
+async function ensurePostgresState() {
+  const pool = getPgPool();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS inventory_state (
+      id integer PRIMARY KEY,
+      data jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    INSERT INTO inventory_state (id, data)
+    VALUES (1, $1::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `, [JSON.stringify(defaultState())]);
+}
+
+async function ensureStorage() {
+  if (DATABASE_URL) {
+    await ensurePostgresState();
+    return;
+  }
+
+  ensureDataFile();
+}
+
+function readStateFile() {
   ensureDataFile();
 
   try {
     const raw = fs.readFileSync(DATA_FILE, "utf8");
     return normalizeState(JSON.parse(raw));
   } catch {
-    return { products: [], purchases: [], outputs: [] };
+    return defaultState();
   }
 }
 
-function writeState(nextState) {
+function writeStateFile(nextState) {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
@@ -67,6 +117,33 @@ function writeState(nextState) {
   const tempFile = `${DATA_FILE}.tmp`;
   fs.writeFileSync(tempFile, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
   fs.renameSync(tempFile, DATA_FILE);
+}
+
+async function readState() {
+  if (DATABASE_URL) {
+    const pool = getPgPool();
+    const result = await pool.query("SELECT data FROM inventory_state WHERE id = 1");
+    return normalizeState(result.rows[0]?.data || defaultState());
+  }
+
+  return readStateFile();
+}
+
+async function writeState(nextState) {
+  const normalized = normalizeState(nextState);
+
+  if (DATABASE_URL) {
+    const pool = getPgPool();
+    await pool.query(`
+      INSERT INTO inventory_state (id, data, updated_at)
+      VALUES (1, $1::jsonb, now())
+      ON CONFLICT (id)
+      DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+    `, [JSON.stringify(normalized)]);
+    return;
+  }
+
+  writeStateFile(normalized);
 }
 
 function sendJson(response, statusCode, payload, extraHeaders = {}) {
@@ -223,14 +300,14 @@ async function handleApi(request, response) {
   }
 
   if (request.method === "GET" && request.url === "/api/state") {
-    sendJson(response, 200, readState());
+    sendJson(response, 200, await readState());
     return true;
   }
 
   if (request.method === "POST" && request.url === "/api/state") {
     try {
       const payload = await readJsonBody(request);
-      writeState(payload);
+      await writeState(payload);
       sendJson(response, 200, { ok: true });
     } catch (error) {
       const statusCode = error.message === "BODY_TOO_LARGE" ? 413 : 400;
@@ -295,8 +372,6 @@ function getNetworkUrls() {
   return urls;
 }
 
-ensureDataFile();
-
 const server = http.createServer(async (request, response) => {
   const handled = await handleApi(request, response);
   if (!handled) serveStatic(request, response);
@@ -313,13 +388,23 @@ server.on("error", (error) => {
   console.error(error.message);
 });
 
-server.listen(PORT, HOST, () => {
-  console.log("Sistema JAPURIMA iniciado.");
-  console.log("NO cierre esta ventana mientras use el sistema.");
-  console.log("");
-  console.log(`Datos: ${DATA_FILE}`);
-  console.log(`Login: usuario "${APP_USER}". Configure APP_USER y APP_PASSWORD para cambiarlo.`);
-  console.log("");
-  console.log("Abra una de estas direcciones en el navegador:");
-  getNetworkUrls().forEach((url) => console.log(`  ${url}`));
+function storageDescription() {
+  return DATABASE_URL ? "PostgreSQL (DATABASE_URL)" : DATA_FILE;
+}
+
+ensureStorage().then(() => {
+  server.listen(PORT, HOST, () => {
+    console.log("Sistema JAPURIMA iniciado.");
+    console.log("NO cierre esta ventana mientras use el sistema.");
+    console.log("");
+    console.log(`Datos: ${storageDescription()}`);
+    console.log(`Login: usuario "${APP_USER}". Configure APP_USER y APP_PASSWORD para cambiarlo.`);
+    console.log("");
+    console.log("Abra una de estas direcciones en el navegador:");
+    getNetworkUrls().forEach((url) => console.log(`  ${url}`));
+  });
+}).catch((error) => {
+  console.error("No se pudo iniciar el almacenamiento de datos.");
+  console.error(error.message);
+  process.exit(1);
 });

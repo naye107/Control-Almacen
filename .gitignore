@@ -2,3 +2,4 @@ data/inventory.json
 server.log
 server.err
 .env
+node_modules/

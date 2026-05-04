@@ -7,7 +7,7 @@ Para usar el sistema desde cualquier lugar necesita publicarlo en un hosting con
 El proyecto ya incluye `render.yaml`, que crea:
 
 - Un Web Service Node.js.
-- Un disco persistente en `/var/data`.
+- Conexion a PostgreSQL mediante `DATABASE_URL`.
 - Variables secretas para el login.
 - Health check en `/api/health`.
 
@@ -18,25 +18,27 @@ El proyecto ya incluye `render.yaml`, que crea:
 3. En Render, vaya a `New` y elija `Blueprint`.
 4. Conecte el repositorio de GitHub donde subio este proyecto.
 5. Render detectara `render.yaml`.
-6. Cuando Render pida variables secretas, escriba:
+6. Cree una base PostgreSQL gratuita en Neon o Supabase y copie su connection string.
+7. Cuando Render pida variables secretas, escriba:
+   - `DATABASE_URL`: la cadena de conexion PostgreSQL
    - `APP_USER`: su usuario, por ejemplo `admin`
    - `APP_PASSWORD`: una clave segura
-7. Apruebe la creacion del servicio.
-8. Cuando termine el deploy, Render le dara una URL como:
+8. Apruebe la creacion del servicio.
+9. Cuando termine el deploy, Render le dara una URL como:
    - `https://japurima-almacen.onrender.com`
 
 ## Variables
 
 En Render quedaran asi:
 
-- `DATA_DIR=/var/data`
+- `DATABASE_URL`: secreto, lo copia desde Neon o Supabase
 - `APP_USER`: secreto, lo escribe usted
 - `APP_PASSWORD`: secreto, lo escribe usted
 
-El archivo de datos se guardara en:
+Los datos se guardaran en PostgreSQL en la tabla:
 
 ```text
-/var/data/inventory.json
+inventory_state
 ```
 
 ## Comandos de Render
@@ -50,13 +52,13 @@ Start Command: npm start
 
 ## Importante
 
-- No use un servicio gratuito sin disco para datos reales.
-- El disco persistente evita que se pierda `inventory.json` cuando Render redeploya o reinicia.
+- No guarde datos reales en archivo dentro de Render gratis.
+- PostgreSQL evita que se pierdan datos cuando Render redeploya o reinicia.
 - Si cambia codigo en GitHub, Render redeploya automaticamente.
 
 ## Recomendacion
 
-Para comenzar, use un solo servicio con disco persistente. Mas adelante, si el sistema crece, conviene migrar los datos a una base de datos real como PostgreSQL.
+Para comenzar, use Render para la web y Neon o Supabase para PostgreSQL gratuito.
 
 ## Seguridad
 

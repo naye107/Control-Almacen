@@ -8,6 +8,7 @@ const ROOT_DIR = __dirname;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(ROOT_DIR, "data"));
 const DATA_FILE = path.join(DATA_DIR, "inventory.json");
 const DATABASE_URL = process.env.DATABASE_URL || "";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY_SIZE = 1024 * 1024;
@@ -92,6 +93,10 @@ async function ensureStorage() {
   if (DATABASE_URL) {
     await ensurePostgresState();
     return;
+  }
+
+  if (IS_PRODUCTION) {
+    throw new Error("DATABASE_URL es obligatorio en produccion para no perder datos al desplegar.");
   }
 
   ensureDataFile();
@@ -252,7 +257,10 @@ function readJsonBody(request) {
 
 async function handleApi(request, response) {
   if (request.method === "GET" && request.url === "/api/health") {
-    sendJson(response, 200, { ok: true });
+    sendJson(response, 200, {
+      ok: true,
+      storage: DATABASE_URL ? "postgres" : "file"
+    });
     return true;
   }
 

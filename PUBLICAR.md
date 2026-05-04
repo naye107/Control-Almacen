@@ -54,6 +54,7 @@ Start Command: npm start
 
 - No guarde datos reales en archivo dentro de Render gratis.
 - PostgreSQL evita que se pierdan datos cuando Render redeploya o reinicia.
+- En produccion, el sistema no iniciara si falta `DATABASE_URL`.
 - Si cambia codigo en GitHub, Render redeploya automaticamente.
 
 ## Recomendacion

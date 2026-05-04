@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260504-3">
+    <link rel="stylesheet" href="styles.css?v=20260504-4">
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -145,16 +145,8 @@
               </label>
               <label>
                 Categoria
-                <input id="product-category" list="category-options" required autocomplete="off" placeholder="Nitrogenado">
-                <datalist id="category-options">
-                  <option value="Nitrogenado"></option>
-                  <option value="Fosfatado"></option>
-                  <option value="Potasico"></option>
-                  <option value="NPK"></option>
-                  <option value="Foliar"></option>
-                  <option value="Enmienda"></option>
-                  <option value="Otro"></option>
-                </datalist>
+                <input id="product-category" list="category-options" required autocomplete="off" placeholder="Escriba una categoria">
+                <datalist id="category-options"></datalist>
               </label>
               <label>
                 Presentacion
@@ -389,6 +381,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260504-3" defer></script>
+    <script src="app.js?v=20260504-4" defer></script>
   </body>
 </html>

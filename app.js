@@ -66,7 +66,6 @@ const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Mat
 const toNumber = (value) => Number.parseFloat(value || "0");
 const normalize = (value) => String(value || "").trim().toLowerCase();
 const isServerMode = () => window.location.protocol !== "file:";
-const defaultCategories = ["Nitrogenado", "Fosfatado", "Potasico", "NPK", "Foliar", "Enmienda", "Otro"];
 
 function showLogin(message = "") {
   elements.appShell.hidden = true;
@@ -404,7 +403,8 @@ function renderProductOptions() {
 }
 
 function renderCategoryOptions() {
-  const categories = [...defaultCategories, ...state.products.map((product) => product.category)]
+  const categories = state.products
+    .map((product) => product.category)
     .map((category) => String(category || "").trim())
     .filter(Boolean);
   const uniqueCategories = [...new Set(categories)].sort((a, b) => a.localeCompare(b, "es"));

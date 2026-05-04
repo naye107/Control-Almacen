@@ -146,10 +146,6 @@ function normalizeState(value) {
   };
 }
 
-function isStateEmpty(value) {
-  return value.products.length === 0 && value.purchases.length === 0 && value.outputs.length === 0;
-}
-
 function readLocalState() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (!saved) return { products: [], purchases: [], outputs: [] };
@@ -170,8 +166,6 @@ function setState(nextState) {
 }
 
 async function loadState() {
-  const localState = readLocalState();
-
   if (isServerMode()) {
     try {
       const response = await fetch("/api/state", {
@@ -188,15 +182,6 @@ async function loadState() {
       backendAvailable = true;
       lastServerSnapshot = JSON.stringify(serverState);
       setState(serverState);
-
-      if (isStateEmpty(serverState) && !isStateEmpty(localState)) {
-        const shouldImport = confirm("Se encontro informacion guardada en este navegador. Desea pasarla al servidor?");
-        if (shouldImport) {
-          setState(localState);
-          const saved = await saveState();
-          if (!saved) return false;
-        }
-      }
       return true;
     } catch {
       backendAvailable = false;
@@ -205,7 +190,7 @@ async function loadState() {
     }
   }
 
-  setState(localState);
+  setState(readLocalState());
   return true;
 }
 

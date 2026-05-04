@@ -358,6 +358,51 @@ function statusBadge(product, stats) {
   return `<span class="badge">Disponible</span>`;
 }
 
+function parsePresentationQuantity(presentation) {
+  const text = String(presentation || "").toLowerCase();
+  const match = text.match(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|kilogramos?|g|gr|gramos?|l|lt|lts|litros?|ml|unidades?|unds?|und|u)\b/i);
+
+  if (!match) return null;
+
+  const value = Number.parseFloat(match[1].replace(",", "."));
+  if (!Number.isFinite(value)) return null;
+
+  const rawUnit = match[2].toLowerCase();
+  const unitMap = {
+    kilo: "kg",
+    kilos: "kg",
+    kilogramo: "kg",
+    kilogramos: "kg",
+    g: "g",
+    gr: "g",
+    gramo: "g",
+    gramos: "g",
+    l: "L",
+    lt: "L",
+    lts: "L",
+    litro: "L",
+    litros: "L",
+    ml: "ml",
+    unidad: "unidades",
+    unidades: "unidades",
+    und: "unidades",
+    unds: "unidades",
+    u: "unidades"
+  };
+
+  return {
+    value,
+    unit: unitMap[rawUnit] || rawUnit
+  };
+}
+
+function formatTotalQuantity(product, stats) {
+  const parsed = parsePresentationQuantity(product.presentation);
+  if (!parsed) return "-";
+
+  return `${formatNumber.format(parsed.value * stats.stock)} ${parsed.unit}`;
+}
+
 function productCell(product) {
   return `
     <div class="product-cell">
@@ -484,13 +529,14 @@ function renderDashboard() {
           <td>${escapeHtml(product.category)}</td>
           <td>${escapeHtml(product.unit)}</td>
           <td>${formatNumber.format(stats.stock)}</td>
+          <td>${escapeHtml(formatTotalQuantity(product, stats))}</td>
           <td>${formatNumber.format(product.minStock)}</td>
           <td>${statusBadge(product, stats)}</td>
         </tr>
       `;
     }).join("");
 
-  elements.dashboardStockTable.innerHTML = rows || emptyRow(7, "No hay productos para mostrar.");
+  elements.dashboardStockTable.innerHTML = rows || emptyRow(8, "No hay productos para mostrar.");
 }
 
 function renderProducts() {
@@ -511,6 +557,7 @@ function renderProducts() {
         <td>${escapeHtml(product.category)}</td>
         <td>${escapeHtml(product.presentation)}</td>
         <td>${formatNumber.format(stats.stock)}</td>
+        <td>${escapeHtml(formatTotalQuantity(product, stats))}</td>
         <td>${formatNumber.format(product.minStock)}</td>
         <td>${statusBadge(product, stats)}</td>
         <td class="actions-cell">
@@ -522,7 +569,7 @@ function renderProducts() {
         </td>
       </tr>
     `;
-  }).join("") || emptyRow(8, "Todavia no hay productos registrados.");
+  }).join("") || emptyRow(9, "Todavia no hay productos registrados.");
 }
 
 function renderPurchases() {
@@ -597,10 +644,11 @@ function renderStock() {
         <td>${formatNumber.format(stats.purchased)}</td>
         <td>${formatNumber.format(stats.output)}</td>
         <td><strong>${formatNumber.format(stats.stock)}</strong></td>
+        <td>${escapeHtml(formatTotalQuantity(product, stats))}</td>
         <td>${statusBadge(product, stats)}</td>
       </tr>
     `;
-  }).join("") || emptyRow(9, "No hay existencias para mostrar.");
+  }).join("") || emptyRow(10, "No hay existencias para mostrar.");
 
   const movements = getMovements().filter((movement) => {
     const product = getProduct(movement.productId);
@@ -874,7 +922,7 @@ function updateAvailableStock() {
 
 function exportCsv() {
   const rows = [
-    ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Stock minimo", "Estado"]
+    ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Cantidad", "Stock minimo", "Estado"]
   ];
 
   state.products.forEach((product) => {
@@ -889,6 +937,7 @@ function exportCsv() {
       stats.purchased,
       stats.output,
       stats.stock,
+      formatTotalQuantity(product, stats),
       product.minStock,
       product.active === false ? "Inactivo" : stats.low ? "Bajo minimo" : "Disponible"
     ]);

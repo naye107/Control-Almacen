@@ -37,6 +37,7 @@ const elements = {
   dashboardStockTable: document.querySelector("#dashboard-stock-table"),
   productsTable: document.querySelector("#products-table"),
   productCount: document.querySelector("#product-count"),
+  categoryOptions: document.querySelector("#category-options"),
   purchasesTable: document.querySelector("#purchases-table"),
   purchaseCount: document.querySelector("#purchase-count"),
   outputsTable: document.querySelector("#outputs-table"),
@@ -65,6 +66,7 @@ const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Mat
 const toNumber = (value) => Number.parseFloat(value || "0");
 const normalize = (value) => String(value || "").trim().toLowerCase();
 const isServerMode = () => window.location.protocol !== "file:";
+const defaultCategories = ["Nitrogenado", "Fosfatado", "Potasico", "NPK", "Foliar", "Enmienda", "Otro"];
 
 function showLogin(message = "") {
   elements.appShell.hidden = true;
@@ -361,7 +363,7 @@ function productCell(product) {
   return `
     <div class="product-cell">
       <strong>${escapeHtml(product.name)}</strong>
-      <small>${escapeHtml(product.unit)}</small>
+      <small>${escapeHtml(product.activeIngredient || product.unit)}</small>
     </div>
   `;
 }
@@ -399,6 +401,17 @@ function renderProductOptions() {
   elements.purchaseProduct.disabled = activeProducts.length === 0;
   elements.outputProduct.disabled = activeProducts.length === 0;
   updateAvailableStock();
+}
+
+function renderCategoryOptions() {
+  const categories = [...defaultCategories, ...state.products.map((product) => product.category)]
+    .map((category) => String(category || "").trim())
+    .filter(Boolean);
+  const uniqueCategories = [...new Set(categories)].sort((a, b) => a.localeCompare(b, "es"));
+
+  elements.categoryOptions.innerHTML = uniqueCategories
+    .map((category) => `<option value="${escapeHtml(category)}"></option>`)
+    .join("");
 }
 
 function renderMetrics() {
@@ -461,12 +474,13 @@ function renderDashboard() {
   }
 
   const rows = activeProducts
-    .filter((product) => matchesSearch([product.name, product.category, product.presentation]))
+    .filter((product) => matchesSearch([product.name, product.activeIngredient, product.category, product.presentation]))
     .map((product) => {
       const stats = getProductStats(product);
       return `
         <tr>
           <td>${productCell(product)}</td>
+          <td>${escapeHtml(product.activeIngredient || "-")}</td>
           <td>${escapeHtml(product.category)}</td>
           <td>${escapeHtml(product.unit)}</td>
           <td>${formatNumber.format(stats.stock)}</td>
@@ -476,12 +490,12 @@ function renderDashboard() {
       `;
     }).join("");
 
-  elements.dashboardStockTable.innerHTML = rows || emptyRow(6, "No hay productos para mostrar.");
+  elements.dashboardStockTable.innerHTML = rows || emptyRow(7, "No hay productos para mostrar.");
 }
 
 function renderProducts() {
   const filtered = state.products.filter((product) => {
-    return matchesSearch([product.name, product.category, product.presentation, product.unit]);
+    return matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, product.unit]);
   });
 
   elements.productCount.textContent = filtered.length;
@@ -493,6 +507,7 @@ function renderProducts() {
     return `
       <tr>
         <td>${productCell(product)}</td>
+        <td>${escapeHtml(product.activeIngredient || "-")}</td>
         <td>${escapeHtml(product.category)}</td>
         <td>${escapeHtml(product.presentation)}</td>
         <td>${formatNumber.format(stats.stock)}</td>
@@ -507,7 +522,7 @@ function renderProducts() {
         </td>
       </tr>
     `;
-  }).join("") || emptyRow(7, "Todavia no hay productos registrados.");
+  }).join("") || emptyRow(8, "Todavia no hay productos registrados.");
 }
 
 function renderPurchases() {
@@ -567,7 +582,7 @@ function renderStock() {
   const onlyLow = elements.onlyLowStock.checked;
   const products = state.products.filter((product) => {
     const stats = getProductStats(product);
-    return (!onlyLow || stats.low) && matchesSearch([product.name, product.category, product.presentation, product.unit]);
+    return (!onlyLow || stats.low) && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, product.unit]);
   });
 
   elements.stockTable.innerHTML = products.map((product) => {
@@ -575,6 +590,7 @@ function renderStock() {
     return `
       <tr>
         <td>${productCell(product)}</td>
+        <td>${escapeHtml(product.activeIngredient || "-")}</td>
         <td>${escapeHtml(product.category)}</td>
         <td>${escapeHtml(product.presentation)}</td>
         <td>${formatNumber.format(product.openingStock)}</td>
@@ -584,7 +600,7 @@ function renderStock() {
         <td>${statusBadge(product, stats)}</td>
       </tr>
     `;
-  }).join("") || emptyRow(8, "No hay existencias para mostrar.");
+  }).join("") || emptyRow(9, "No hay existencias para mostrar.");
 
   const movements = getMovements().filter((movement) => {
     const product = getProduct(movement.productId);
@@ -608,6 +624,7 @@ function renderStock() {
 }
 
 function renderAll() {
+  renderCategoryOptions();
   renderProductOptions();
   renderMetrics();
   renderDashboard();
@@ -620,6 +637,7 @@ function renderAll() {
 function resetProductForm() {
   productForm.reset();
   document.querySelector("#product-id").value = "";
+  document.querySelector("#product-active-ingredient").value = "";
   document.querySelector("#product-opening-stock").value = "0";
   document.querySelector("#product-min-stock").value = "0";
   elements.cancelProductEdit.hidden = true;
@@ -631,6 +649,7 @@ async function handleProductSubmit(event) {
   const id = document.querySelector("#product-id").value;
   const data = {
     name: document.querySelector("#product-name").value.trim(),
+    activeIngredient: document.querySelector("#product-active-ingredient").value.trim(),
     category: document.querySelector("#product-category").value,
     presentation: document.querySelector("#product-presentation").value.trim(),
     unit: document.querySelector("#product-unit").value,
@@ -638,7 +657,7 @@ async function handleProductSubmit(event) {
     minStock: toNumber(document.querySelector("#product-min-stock").value)
   };
 
-  if (!data.name || !data.presentation) {
+  if (!data.name || !data.activeIngredient || !data.presentation) {
     showToast("Complete los datos del producto.");
     return;
   }
@@ -751,6 +770,7 @@ function editProduct(productId) {
 
   document.querySelector("#product-id").value = product.id;
   document.querySelector("#product-name").value = product.name;
+  document.querySelector("#product-active-ingredient").value = product.activeIngredient || "";
   document.querySelector("#product-category").value = product.category;
   document.querySelector("#product-presentation").value = product.presentation;
   document.querySelector("#product-unit").value = product.unit;
@@ -854,13 +874,14 @@ function updateAvailableStock() {
 
 function exportCsv() {
   const rows = [
-    ["Producto", "Categoria", "Presentacion", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Stock minimo", "Estado"]
+    ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Stock minimo", "Estado"]
   ];
 
   state.products.forEach((product) => {
     const stats = getProductStats(product);
     rows.push([
       product.name,
+      product.activeIngredient || "",
       product.category,
       product.presentation,
       product.unit,

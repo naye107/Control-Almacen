@@ -46,9 +46,18 @@ function ensureDataFile() {
   }
 }
 
+function normalizeProduct(product) {
+  if (!product || typeof product !== "object") return product;
+
+  return {
+    ...product,
+    unit: product.unit === "bidones" ? "galones" : product.unit
+  };
+}
+
 function normalizeState(value) {
   return {
-    products: Array.isArray(value?.products) ? value.products : [],
+    products: Array.isArray(value?.products) ? value.products.map(normalizeProduct) : [],
     purchases: Array.isArray(value?.purchases) ? value.purchases : [],
     outputs: Array.isArray(value?.outputs) ? value.outputs : []
   };

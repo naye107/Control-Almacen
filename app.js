@@ -48,6 +48,7 @@ const elements = {
   purchaseProduct: document.querySelector("#purchase-product"),
   purchasePresentation: document.querySelector("#purchase-presentation"),
   outputProduct: document.querySelector("#output-product"),
+  outputPresentation: document.querySelector("#output-presentation"),
   availableStock: document.querySelector("#available-stock"),
   cancelProductEdit: document.querySelector("#cancel-product-edit"),
   logoutButton: document.querySelector("#logout-button")
@@ -313,12 +314,102 @@ function getOutputs(productId) {
   return state.outputs.filter((output) => output.productId === productId);
 }
 
+function getPresentationInfo(presentation) {
+  const label = String(presentation || "").trim();
+  const parsed = parsePresentationQuantity(label);
+
+  if (!parsed) {
+    return {
+      key: `text:${normalize(label)}`,
+      group: "text",
+      baseValue: null
+    };
+  }
+
+  if (parsed.unit === "L") {
+    return {
+      key: `volume:${Number((parsed.value * 1000).toFixed(6))}`,
+      group: "volume",
+      baseValue: parsed.value * 1000
+    };
+  }
+
+  if (parsed.unit === "ml") {
+    return {
+      key: `volume:${Number(parsed.value.toFixed(6))}`,
+      group: "volume",
+      baseValue: parsed.value
+    };
+  }
+
+  if (parsed.unit === "kg") {
+    return {
+      key: `weight:${Number((parsed.value * 1000).toFixed(6))}`,
+      group: "weight",
+      baseValue: parsed.value * 1000
+    };
+  }
+
+  if (parsed.unit === "g") {
+    return {
+      key: `weight:${Number(parsed.value.toFixed(6))}`,
+      group: "weight",
+      baseValue: parsed.value
+    };
+  }
+
+  return {
+    key: `units:${Number(parsed.value.toFixed(6))}`,
+    group: "units",
+    baseValue: parsed.value
+  };
+}
+
+function getPresentationBreakdown(product) {
+  const buckets = new Map();
+
+  function ensureBucket(presentation) {
+    const label = String(presentation || product.presentation || "Sin presentacion").trim();
+    const info = getPresentationInfo(label);
+
+    if (!buckets.has(info.key)) {
+      buckets.set(info.key, {
+        key: info.key,
+        label,
+        info,
+        opening: 0,
+        purchased: 0,
+        output: 0,
+        stock: 0
+      });
+    }
+
+    return buckets.get(info.key);
+  }
+
+  ensureBucket(product.presentation).opening += toNumber(product.openingStock);
+
+  getPurchases(product.id).forEach((purchase) => {
+    ensureBucket(purchase.presentation || product.presentation).purchased += toNumber(purchase.quantity);
+  });
+
+  getOutputs(product.id).forEach((output) => {
+    ensureBucket(output.presentation || product.presentation).output += toNumber(output.quantity);
+  });
+
+  return [...buckets.values()]
+    .map((item) => ({
+      ...item,
+      stock: item.opening + item.purchased - item.output
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, "es"));
+}
+
 function getProductStats(product) {
-  const purchases = getPurchases(product.id);
-  const outputs = getOutputs(product.id);
-  const purchased = purchases.reduce((sum, purchase) => sum + toNumber(purchase.quantity), 0);
-  const output = outputs.reduce((sum, item) => sum + toNumber(item.quantity), 0);
-  const stock = toNumber(product.openingStock) + purchased - output;
+  const breakdown = getPresentationBreakdown(product);
+  const purchased = breakdown.reduce((sum, item) => sum + item.purchased, 0);
+  const output = breakdown.reduce((sum, item) => sum + item.output, 0);
+  const stock = breakdown.reduce((sum, item) => sum + item.stock, 0);
 
   return {
     purchased,
@@ -351,7 +442,12 @@ function getMovements() {
     productId: item.productId,
     entry: 0,
     output: toNumber(item.quantity),
-    detail: [item.destination, item.reason, item.responsible].filter(Boolean).join(" | ")
+    detail: [
+      item.destination,
+      item.presentation || getProduct(item.productId)?.presentation,
+      item.reason,
+      item.responsible
+    ].filter(Boolean).join(" | ")
   }));
 
   return [...purchases, ...outputs].sort((a, b) => {
@@ -411,11 +507,65 @@ function parsePresentationQuantity(presentation) {
   };
 }
 
-function formatTotalQuantity(product, stats) {
-  const parsed = parsePresentationQuantity(product.presentation);
-  if (!parsed) return "-";
+function formatPhysicalTotal(group, value) {
+  const absolute = Math.abs(value);
 
-  return `${formatNumber.format(parsed.value * stats.stock)} ${parsed.unit}`;
+  if (group === "volume") {
+    return absolute >= 1000 || value === 0
+      ? `${formatNumber.format(value / 1000)} L`
+      : `${formatNumber.format(value)} ml`;
+  }
+
+  if (group === "weight") {
+    return absolute >= 1000 || value === 0
+      ? `${formatNumber.format(value / 1000)} kg`
+      : `${formatNumber.format(value)} g`;
+  }
+
+  if (group === "units") {
+    return `${formatNumber.format(value)} unidades`;
+  }
+
+  return "-";
+}
+
+function formatTotalQuantity(product) {
+  const totals = new Map();
+  const breakdown = getPresentationBreakdown(product);
+
+  if (breakdown.some((item) => item.stock !== 0 && item.info.baseValue === null)) {
+    return "-";
+  }
+
+  breakdown.forEach((item) => {
+    if (item.info.baseValue === null) return;
+
+    const current = totals.get(item.info.group) || 0;
+    totals.set(item.info.group, current + item.info.baseValue * item.stock);
+  });
+
+  if (totals.size !== 1) return "-";
+
+  const [group, value] = totals.entries().next().value;
+  return formatPhysicalTotal(group, value);
+}
+
+function presentationSummary(product) {
+  const breakdown = getPresentationBreakdown(product);
+  const withStock = breakdown.filter((item) => item.stock !== 0);
+  const source = withStock.length ? withStock : breakdown;
+  const labels = [...new Set(source.map((item) => item.label).filter(Boolean))];
+
+  if (labels.length <= 2) return labels.join(" / ") || "-";
+
+  return `${labels.slice(0, 2).join(" / ")} +${labels.length - 2}`;
+}
+
+function getPresentationStock(product, presentation) {
+  const key = getPresentationInfo(presentation || product.presentation).key;
+  const bucket = getPresentationBreakdown(product).find((item) => item.key === key);
+
+  return bucket?.stock || 0;
 }
 
 function productCell(product) {
@@ -450,7 +600,8 @@ function renderProductOptions() {
   const options = activeProducts
     .map((product) => {
       const stats = getProductStats(product);
-      const presentation = product.presentation ? ` - ${product.presentation}` : "";
+      const summary = presentationSummary(product);
+      const presentation = summary && summary !== "-" ? ` - ${summary}` : "";
       return `<option value="${product.id}">${escapeHtml(product.name)}${escapeHtml(presentation)} (${formatNumber.format(stats.stock)} ${escapeHtml(product.unit)})</option>`;
     })
     .join("");
@@ -461,6 +612,7 @@ function renderProductOptions() {
   elements.purchaseProduct.disabled = activeProducts.length === 0;
   elements.outputProduct.disabled = activeProducts.length === 0;
   updatePurchasePresentation();
+  updateOutputPresentation();
   updateAvailableStock();
 }
 
@@ -536,7 +688,7 @@ function renderDashboard() {
   }
 
   const rows = activeProducts
-    .filter((product) => matchesSearch([product.name, product.activeIngredient, product.category, product.presentation]))
+    .filter((product) => matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product)]))
     .map((product) => {
       const stats = getProductStats(product);
       return `
@@ -546,7 +698,7 @@ function renderDashboard() {
           <td>${escapeHtml(product.category)}</td>
           <td>${escapeHtml(product.unit)}</td>
           <td>${formatNumber.format(stats.stock)}</td>
-          <td>${escapeHtml(formatTotalQuantity(product, stats))}</td>
+          <td>${escapeHtml(formatTotalQuantity(product))}</td>
           <td>${formatNumber.format(product.minStock)}</td>
           <td>${statusBadge(product, stats)}</td>
         </tr>
@@ -558,7 +710,7 @@ function renderDashboard() {
 
 function renderProducts() {
   const filtered = state.products.filter((product) => {
-    return matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, product.unit]);
+    return matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product), product.unit]);
   });
 
   elements.productCount.textContent = filtered.length;
@@ -572,9 +724,9 @@ function renderProducts() {
         <td>${productCell(product)}</td>
         <td>${escapeHtml(product.activeIngredient || "-")}</td>
         <td>${escapeHtml(product.category)}</td>
-        <td>${escapeHtml(product.presentation)}</td>
+        <td>${escapeHtml(presentationSummary(product))}</td>
         <td>${formatNumber.format(stats.stock)}</td>
-        <td>${escapeHtml(formatTotalQuantity(product, stats))}</td>
+        <td>${escapeHtml(formatTotalQuantity(product))}</td>
         <td>${formatNumber.format(product.minStock)}</td>
         <td>${statusBadge(product, stats)}</td>
         <td class="actions-cell">
@@ -620,7 +772,7 @@ function renderPurchases() {
 function renderOutputs() {
   const filtered = state.outputs.filter((output) => {
     const product = getProduct(output.productId);
-    return matchesSearch([product?.name, output.destination, output.reason, output.responsible, output.date]);
+    return matchesSearch([product?.name, output.presentation, output.destination, output.reason, output.responsible, output.date]);
   });
 
   elements.outputCount.textContent = filtered.length;
@@ -628,10 +780,12 @@ function renderOutputs() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((output) => {
       const product = getProduct(output.productId);
+      const presentation = output.presentation || product?.presentation || "-";
       return `
         <tr>
           <td>${escapeHtml(output.date)}</td>
           <td>${productCell(product || { name: "Producto eliminado", unit: "" })}</td>
+          <td>${escapeHtml(presentation)}</td>
           <td>${escapeHtml(output.destination)}</td>
           <td>${formatNumber.format(output.quantity)}</td>
           <td>${escapeHtml(output.reason)}</td>
@@ -641,14 +795,14 @@ function renderOutputs() {
           </td>
         </tr>
       `;
-    }).join("") || emptyRow(7, "No hay salidas registradas.");
+    }).join("") || emptyRow(8, "No hay salidas registradas.");
 }
 
 function renderStock() {
   const onlyLow = elements.onlyLowStock.checked;
   const products = state.products.filter((product) => {
     const stats = getProductStats(product);
-    return (!onlyLow || stats.low) && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, product.unit]);
+    return (!onlyLow || stats.low) && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product), product.unit]);
   });
 
   elements.stockTable.innerHTML = products.map((product) => {
@@ -658,12 +812,12 @@ function renderStock() {
         <td>${productCell(product)}</td>
         <td>${escapeHtml(product.activeIngredient || "-")}</td>
         <td>${escapeHtml(product.category)}</td>
-        <td>${escapeHtml(product.presentation)}</td>
+        <td>${escapeHtml(presentationSummary(product))}</td>
         <td>${formatNumber.format(product.openingStock)}</td>
         <td>${formatNumber.format(stats.purchased)}</td>
         <td>${formatNumber.format(stats.output)}</td>
         <td><strong>${formatNumber.format(stats.stock)}</strong></td>
-        <td>${escapeHtml(formatTotalQuantity(product, stats))}</td>
+        <td>${escapeHtml(formatTotalQuantity(product))}</td>
         <td>${statusBadge(product, stats)}</td>
       </tr>
     `;
@@ -797,15 +951,21 @@ async function handleOutputSubmit(event) {
   }
 
   const quantity = toNumber(document.querySelector("#output-quantity").value);
-  const stats = getProductStats(product);
+  const presentation = elements.outputPresentation.value.trim();
+  const available = getPresentationStock(product, presentation);
 
   if (quantity <= 0) {
     showToast("Ingrese una cantidad valida.");
     return;
   }
 
-  if (quantity > stats.stock) {
-    showToast(`Stock insuficiente. Disponible: ${formatNumber.format(stats.stock)} ${product.unit}.`);
+  if (!presentation) {
+    showToast("Indique la presentacion de la salida.");
+    return;
+  }
+
+  if (quantity > available) {
+    showToast(`Stock insuficiente para ${presentation}. Disponible: ${formatNumber.format(available)} ${product.unit}.`);
     return;
   }
 
@@ -813,6 +973,7 @@ async function handleOutputSubmit(event) {
     id: uid(),
     productId: product.id,
     date: document.querySelector("#output-date").value,
+    presentation,
     destination: document.querySelector("#output-destination").value.trim(),
     quantity,
     reason: document.querySelector("#output-reason").value,
@@ -886,9 +1047,10 @@ async function deletePurchase(purchaseId) {
 
   const product = getProduct(purchase.productId);
   if (product) {
-    const stats = getProductStats(product);
-    if (stats.stock - toNumber(purchase.quantity) < 0) {
-      showToast("No se puede eliminar: dejaria stock negativo.");
+    const presentation = purchase.presentation || product.presentation;
+    const stock = getPresentationStock(product, presentation);
+    if (stock - toNumber(purchase.quantity) < 0) {
+      showToast(`No se puede eliminar: dejaria stock negativo para ${presentation}.`);
       return;
     }
   }
@@ -934,6 +1096,11 @@ function updatePurchasePresentation() {
   elements.purchasePresentation.value = product?.presentation || "";
 }
 
+function updateOutputPresentation() {
+  const product = getProduct(elements.outputProduct.value);
+  elements.outputPresentation.value = product?.presentation || "";
+}
+
 function updateAvailableStock() {
   const product = getProduct(elements.outputProduct.value);
   if (!product) {
@@ -941,8 +1108,9 @@ function updateAvailableStock() {
     return;
   }
 
-  const stats = getProductStats(product);
-  elements.availableStock.textContent = `Stock: ${formatNumber.format(stats.stock)} ${product.unit}`;
+  const presentation = elements.outputPresentation.value.trim() || product.presentation;
+  const stock = getPresentationStock(product, presentation);
+  elements.availableStock.textContent = `Stock: ${formatNumber.format(stock)} ${product.unit} de ${presentation}`;
 }
 
 function exportCsv() {
@@ -956,13 +1124,13 @@ function exportCsv() {
       product.name,
       product.activeIngredient || "",
       product.category,
-      product.presentation,
+      presentationSummary(product),
       product.unit,
       product.openingStock,
       stats.purchased,
       stats.output,
       stats.stock,
-      formatTotalQuantity(product, stats),
+      formatTotalQuantity(product),
       product.minStock,
       product.active === false ? "Inactivo" : stats.low ? "Bajo minimo" : "Disponible"
     ]);
@@ -1016,7 +1184,11 @@ function bindEvents() {
   elements.globalSearch.addEventListener("input", renderAll);
   elements.onlyLowStock.addEventListener("change", renderStock);
   elements.purchaseProduct.addEventListener("change", updatePurchasePresentation);
-  elements.outputProduct.addEventListener("change", updateAvailableStock);
+  elements.outputProduct.addEventListener("change", () => {
+    updateOutputPresentation();
+    updateAvailableStock();
+  });
+  elements.outputPresentation.addEventListener("input", updateAvailableStock);
   window.addEventListener("focus", refreshStateFromServer);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshStateFromServer();

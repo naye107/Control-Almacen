@@ -65,7 +65,7 @@
           <div class="header-actions">
             <label class="search-box">
               <span>Buscar</span>
-              <input id="global-search" type="search" placeholder="Producto, lote, proveedor...">
+              <input id="global-search" type="search" placeholder="Producto, presentacion, lote...">
             </label>
           </div>
         </header>
@@ -212,6 +212,10 @@
                 <select id="purchase-product" required></select>
               </label>
               <label>
+                Presentacion
+                <input id="purchase-presentation" readonly placeholder="Seleccione producto">
+              </label>
+              <label>
                 Fecha
                 <input id="purchase-date" type="date" required>
               </label>
@@ -246,6 +250,7 @@
                   <tr>
                     <th>Fecha</th>
                     <th>Producto</th>
+                    <th>Presentacion</th>
                     <th>Proveedor</th>
                     <th>Cantidad</th>
                     <th>Lote</th>
@@ -384,6 +389,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260505-1" defer></script>
+    <script src="app.js?v=20260512-1" defer></script>
   </body>
 </html>

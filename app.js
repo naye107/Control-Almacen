@@ -46,6 +46,7 @@ const elements = {
   kardexTable: document.querySelector("#kardex-table"),
   kardexCount: document.querySelector("#kardex-count"),
   purchaseProduct: document.querySelector("#purchase-product"),
+  purchasePresentation: document.querySelector("#purchase-presentation"),
   outputProduct: document.querySelector("#output-product"),
   availableStock: document.querySelector("#available-stock"),
   cancelProductEdit: document.querySelector("#cancel-product-edit"),
@@ -444,7 +445,8 @@ function renderProductOptions() {
   const options = activeProducts
     .map((product) => {
       const stats = getProductStats(product);
-      return `<option value="${product.id}">${escapeHtml(product.name)} (${formatNumber.format(stats.stock)} ${escapeHtml(product.unit)})</option>`;
+      const presentation = product.presentation ? ` - ${product.presentation}` : "";
+      return `<option value="${product.id}">${escapeHtml(product.name)}${escapeHtml(presentation)} (${formatNumber.format(stats.stock)} ${escapeHtml(product.unit)})</option>`;
     })
     .join("");
 
@@ -453,6 +455,7 @@ function renderProductOptions() {
   elements.outputProduct.innerHTML = options || fallback;
   elements.purchaseProduct.disabled = activeProducts.length === 0;
   elements.outputProduct.disabled = activeProducts.length === 0;
+  updatePurchasePresentation();
   updateAvailableStock();
 }
 
@@ -584,7 +587,7 @@ function renderProducts() {
 function renderPurchases() {
   const filtered = state.purchases.filter((purchase) => {
     const product = getProduct(purchase.productId);
-    return matchesSearch([product?.name, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
+    return matchesSearch([product?.name, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
   });
 
   elements.purchaseCount.textContent = filtered.length;
@@ -596,6 +599,7 @@ function renderPurchases() {
         <tr>
           <td>${escapeHtml(purchase.date)}</td>
           <td>${productCell(product || { name: "Producto eliminado", unit: "" })}</td>
+          <td>${escapeHtml(product?.presentation || "-")}</td>
           <td>${escapeHtml(purchase.supplier)}</td>
           <td>${formatNumber.format(purchase.quantity)}</td>
           <td>${escapeHtml(purchase.lot || "-")}</td>
@@ -604,7 +608,7 @@ function renderPurchases() {
           </td>
         </tr>
       `;
-    }).join("") || emptyRow(6, "No hay compras registradas.");
+    }).join("") || emptyRow(7, "No hay compras registradas.");
 }
 
 function renderOutputs() {
@@ -918,6 +922,11 @@ function closeMobileNav() {
   }
 }
 
+function updatePurchasePresentation() {
+  const product = getProduct(elements.purchaseProduct.value);
+  elements.purchasePresentation.value = product?.presentation || "";
+}
+
 function updateAvailableStock() {
   const product = getProduct(elements.outputProduct.value);
   if (!product) {
@@ -999,6 +1008,7 @@ function bindEvents() {
   elements.cancelProductEdit.addEventListener("click", resetProductForm);
   elements.globalSearch.addEventListener("input", renderAll);
   elements.onlyLowStock.addEventListener("change", renderStock);
+  elements.purchaseProduct.addEventListener("change", updatePurchasePresentation);
   elements.outputProduct.addEventListener("change", updateAvailableStock);
   window.addEventListener("focus", refreshStateFromServer);
   document.addEventListener("visibilitychange", () => {

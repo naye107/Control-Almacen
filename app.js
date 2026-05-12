@@ -336,7 +336,12 @@ function getMovements() {
     productId: purchase.productId,
     entry: toNumber(purchase.quantity),
     output: 0,
-    detail: [purchase.supplier, purchase.lot, purchase.doc].filter(Boolean).join(" | ")
+    detail: [
+      purchase.supplier,
+      purchase.presentation || getProduct(purchase.productId)?.presentation,
+      purchase.lot,
+      purchase.doc
+    ].filter(Boolean).join(" | ")
   }));
 
   const outputs = state.outputs.map((item) => ({
@@ -587,7 +592,7 @@ function renderProducts() {
 function renderPurchases() {
   const filtered = state.purchases.filter((purchase) => {
     const product = getProduct(purchase.productId);
-    return matchesSearch([product?.name, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
+    return matchesSearch([product?.name, purchase.presentation, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
   });
 
   elements.purchaseCount.textContent = filtered.length;
@@ -595,11 +600,12 @@ function renderPurchases() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((purchase) => {
       const product = getProduct(purchase.productId);
+      const presentation = purchase.presentation || product?.presentation || "-";
       return `
         <tr>
           <td>${escapeHtml(purchase.date)}</td>
           <td>${productCell(product || { name: "Producto eliminado", unit: "" })}</td>
-          <td>${escapeHtml(product?.presentation || "-")}</td>
+          <td>${escapeHtml(presentation)}</td>
           <td>${escapeHtml(purchase.supplier)}</td>
           <td>${formatNumber.format(purchase.quantity)}</td>
           <td>${escapeHtml(purchase.lot || "-")}</td>
@@ -761,13 +767,14 @@ async function handlePurchaseSubmit(event) {
     id: uid(),
     productId: elements.purchaseProduct.value,
     date: document.querySelector("#purchase-date").value,
+    presentation: elements.purchasePresentation.value.trim(),
     supplier: document.querySelector("#purchase-supplier").value.trim(),
     quantity: toNumber(document.querySelector("#purchase-quantity").value),
     lot: document.querySelector("#purchase-lot").value.trim(),
     doc: document.querySelector("#purchase-doc").value.trim()
   };
 
-  if (!purchase.productId || !purchase.supplier || purchase.quantity <= 0) {
+  if (!purchase.productId || !purchase.presentation || !purchase.supplier || purchase.quantity <= 0) {
     showToast("Complete la compra con una cantidad valida.");
     return;
   }

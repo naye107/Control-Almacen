@@ -685,17 +685,15 @@ function renderProductOptions() {
 
       if (nameSort) return nameSort;
 
-      return presentationSummary(left).localeCompare(presentationSummary(right), "es", {
+      return String(left.activeIngredient || "").localeCompare(String(right.activeIngredient || ""), "es", {
         numeric: true,
         sensitivity: "base"
       });
     });
   const options = activeProducts
     .map((product) => {
-      const stats = getProductStats(product);
-      const summary = presentationSummary(product);
-      const presentation = summary && summary !== "-" ? ` - ${summary}` : "";
-      return `<option value="${product.id}">${escapeHtml(product.name)}${escapeHtml(presentation)} (${formatNumber.format(stats.stock)} ${escapeHtml(product.unit)})</option>`;
+      const activeIngredient = product.activeIngredient ? ` - ${product.activeIngredient}` : "";
+      return `<option value="${product.id}">${escapeHtml(product.name)}${escapeHtml(activeIngredient)}</option>`;
     })
     .join("");
 

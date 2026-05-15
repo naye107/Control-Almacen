@@ -675,7 +675,21 @@ function setFormDefaults() {
 }
 
 function renderProductOptions() {
-  const activeProducts = state.products.filter((product) => product.active !== false);
+  const activeProducts = state.products
+    .filter((product) => product.active !== false)
+    .sort((left, right) => {
+      const nameSort = String(left.name || "").localeCompare(String(right.name || ""), "es", {
+        numeric: true,
+        sensitivity: "base"
+      });
+
+      if (nameSort) return nameSort;
+
+      return presentationSummary(left).localeCompare(presentationSummary(right), "es", {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
   const options = activeProducts
     .map((product) => {
       const stats = getProductStats(product);

@@ -331,6 +331,7 @@ function getPresentationInfo(presentation) {
     return {
       key: `volume:${Number((parsed.value * 1000).toFixed(6))}`,
       group: "volume",
+      unit: "L",
       baseValue: parsed.value * 1000
     };
   }
@@ -339,6 +340,7 @@ function getPresentationInfo(presentation) {
     return {
       key: `volume:${Number(parsed.value.toFixed(6))}`,
       group: "volume",
+      unit: "ml",
       baseValue: parsed.value
     };
   }
@@ -347,6 +349,7 @@ function getPresentationInfo(presentation) {
     return {
       key: `weight:${Number((parsed.value * 1000).toFixed(6))}`,
       group: "weight",
+      unit: "kg",
       baseValue: parsed.value * 1000
     };
   }
@@ -355,13 +358,15 @@ function getPresentationInfo(presentation) {
     return {
       key: `weight:${Number(parsed.value.toFixed(6))}`,
       group: "weight",
+      unit: "g",
       baseValue: parsed.value
     };
   }
 
   return {
-    key: `units:${Number(parsed.value.toFixed(6))}`,
+    key: `units:${parsed.unit}:${Number(parsed.value.toFixed(6))}`,
     group: "units",
+    unit: parsed.unit,
     baseValue: parsed.value
   };
 }
@@ -477,7 +482,7 @@ function statusBadge(product, stats) {
 
 function parsePresentationQuantity(presentation) {
   const text = String(presentation || "").toLowerCase();
-  const match = text.match(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|kilogramos?|g|gr|gramos?|l|lt|lts|litros?|ml|unidades?|unds?|und|u)\b/i);
+  const match = text.match(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|kilogramos?|g|gr|gramos?|l|lt|lts|litros?|ml|pastillas?|tabletas?|unidades?|unds?|und|u)\b/i);
 
   if (!match) return null;
 
@@ -500,6 +505,10 @@ function parsePresentationQuantity(presentation) {
     litro: "L",
     litros: "L",
     ml: "ml",
+    pastilla: "pastillas",
+    pastillas: "pastillas",
+    tableta: "pastillas",
+    tabletas: "pastillas",
     unidad: "unidades",
     unidades: "unidades",
     und: "unidades",
@@ -513,7 +522,7 @@ function parsePresentationQuantity(presentation) {
   };
 }
 
-function formatPhysicalTotal(group, value) {
+function formatPhysicalTotal(group, value, unit = "unidades") {
   const absolute = Math.abs(value);
 
   if (group === "volume") {
@@ -529,7 +538,7 @@ function formatPhysicalTotal(group, value) {
   }
 
   if (group === "units") {
-    return `${formatNumber.format(value)} unidades`;
+    return `${formatNumber.format(value)} ${unit}`;
   }
 
   return "-";
@@ -546,14 +555,20 @@ function formatTotalQuantity(product) {
   breakdown.forEach((item) => {
     if (item.info.baseValue === null) return;
 
-    const current = totals.get(item.info.group) || 0;
-    totals.set(item.info.group, current + item.info.baseValue * item.stock);
+    const key = item.info.group === "units" ? `${item.info.group}:${item.info.unit}` : item.info.group;
+    const current = totals.get(key) || {
+      group: item.info.group,
+      unit: item.info.unit,
+      value: 0
+    };
+    current.value += item.info.baseValue * item.stock;
+    totals.set(key, current);
   });
 
   if (totals.size !== 1) return "-";
 
-  const [group, value] = totals.entries().next().value;
-  return formatPhysicalTotal(group, value);
+  const total = totals.values().next().value;
+  return formatPhysicalTotal(total.group, total.value, total.unit);
 }
 
 function presentationSummary(product) {
@@ -590,7 +605,7 @@ function getPreferredPhysicalUnit(info) {
   }
 
   if (info.group === "units") {
-    return { label: "unidades", unit: "unidades", baseFactor: 1 };
+    return { label: info.unit || "unidades", unit: info.unit || "unidades", baseFactor: 1 };
   }
 
   return null;
@@ -1225,7 +1240,7 @@ function updateAvailableStock() {
   const presentation = elements.outputPresentation.value.trim() || product.presentation;
   const stock = getPresentationStock(product, presentation);
   const info = getPresentationInfo(presentation);
-  const physicalStock = info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * stock)})`;
+  const physicalStock = info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * stock, info.unit)})`;
   elements.availableStock.textContent = `Stock: ${formatNumber.format(stock)} ${product.unit} de ${presentation}${physicalStock}`;
 }
 

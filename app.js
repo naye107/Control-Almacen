@@ -49,6 +49,7 @@ const elements = {
   purchasePresentation: document.querySelector("#purchase-presentation"),
   outputProduct: document.querySelector("#output-product"),
   outputPresentation: document.querySelector("#output-presentation"),
+  outputQuantityUnit: document.querySelector("#output-quantity-unit"),
   availableStock: document.querySelector("#available-stock"),
   cancelProductEdit: document.querySelector("#cancel-product-edit"),
   logoutButton: document.querySelector("#logout-button")
@@ -427,6 +428,7 @@ function getMovements() {
     productId: purchase.productId,
     entry: toNumber(purchase.quantity),
     output: 0,
+    amountLabel: formatNumber.format(purchase.quantity),
     detail: [
       purchase.supplier,
       purchase.presentation || getProduct(purchase.productId)?.presentation,
@@ -435,20 +437,24 @@ function getMovements() {
     ].filter(Boolean).join(" | ")
   }));
 
-  const outputs = state.outputs.map((item) => ({
-    id: item.id,
-    type: "Salida",
-    date: item.date,
-    productId: item.productId,
-    entry: 0,
-    output: toNumber(item.quantity),
-    detail: [
-      item.destination,
-      item.presentation || getProduct(item.productId)?.presentation,
-      item.reason,
-      item.responsible
-    ].filter(Boolean).join(" | ")
-  }));
+  const outputs = state.outputs.map((item) => {
+    const product = getProduct(item.productId);
+    return {
+      id: item.id,
+      type: "Salida",
+      date: item.date,
+      productId: item.productId,
+      entry: 0,
+      output: toNumber(item.quantity),
+      amountLabel: formatOutputQuantity(item, product),
+      detail: [
+        item.destination,
+        item.presentation || product?.presentation,
+        item.reason,
+        item.responsible
+      ].filter(Boolean).join(" | ")
+    };
+  });
 
   return [...purchases, ...outputs].sort((a, b) => {
     const dateSort = b.date.localeCompare(a.date);
@@ -568,6 +574,79 @@ function getPresentationStock(product, presentation) {
   return bucket?.stock || 0;
 }
 
+function getPreferredPhysicalUnit(info) {
+  if (info.baseValue === null || info.baseValue <= 0) return null;
+
+  if (info.group === "volume") {
+    return info.baseValue >= 1000
+      ? { label: "litros", unit: "L", baseFactor: 1000 }
+      : { label: "ml", unit: "ml", baseFactor: 1 };
+  }
+
+  if (info.group === "weight") {
+    return info.baseValue >= 1000
+      ? { label: "kg", unit: "kg", baseFactor: 1000 }
+      : { label: "g", unit: "g", baseFactor: 1 };
+  }
+
+  if (info.group === "units") {
+    return { label: "unidades", unit: "unidades", baseFactor: 1 };
+  }
+
+  return null;
+}
+
+function getOutputQuantityOptions(product, presentation) {
+  const options = [];
+  const info = getPresentationInfo(presentation || product.presentation);
+  const physicalUnit = getPreferredPhysicalUnit(info);
+
+  if (physicalUnit) {
+    options.push({
+      value: "physical",
+      label: physicalUnit.label
+    });
+  }
+
+  options.push({
+    value: "units",
+    label: product.unit
+  });
+
+  return options.filter((option, index, items) => {
+    return items.findIndex((item) => item.label === option.label) === index;
+  });
+}
+
+function getOutputQuantityConversion(product, presentation, quantity, mode) {
+  if (mode !== "physical") {
+    return {
+      quantity,
+      usedQuantity: quantity,
+      usedUnit: product.unit,
+      quantityMode: "units"
+    };
+  }
+
+  const info = getPresentationInfo(presentation);
+  const physicalUnit = getPreferredPhysicalUnit(info);
+  if (!physicalUnit) return null;
+
+  return {
+    quantity: (quantity * physicalUnit.baseFactor) / info.baseValue,
+    usedQuantity: quantity,
+    usedUnit: physicalUnit.unit,
+    quantityMode: "physical"
+  };
+}
+
+function formatOutputQuantity(output, product) {
+  const quantity = output.usedQuantity ?? output.quantity;
+  const unit = output.usedUnit || product?.unit || "";
+
+  return [formatNumber.format(quantity), unit].filter(Boolean).join(" ");
+}
+
 function productCell(product) {
   return `
     <div class="product-cell">
@@ -613,6 +692,7 @@ function renderProductOptions() {
   elements.outputProduct.disabled = activeProducts.length === 0;
   updatePurchasePresentation();
   updateOutputPresentation();
+  updateOutputQuantityUnitOptions();
   updateAvailableStock();
 }
 
@@ -681,7 +761,7 @@ function renderDashboard() {
             <strong>${escapeHtml(product?.name || "Producto eliminado")}</strong>
             <small>${escapeHtml(movement.date)} - ${escapeHtml(movement.detail || movement.type)}</small>
           </div>
-          <span class="badge ${badgeClass}">${movement.type} ${formatNumber.format(amount)}</span>
+          <span class="badge ${badgeClass}">${movement.type} ${escapeHtml(movement.amountLabel || formatNumber.format(amount))}</span>
         </article>
       `;
     }).join("");
@@ -787,7 +867,7 @@ function renderOutputs() {
           <td>${productCell(product || { name: "Producto eliminado", unit: "" })}</td>
           <td>${escapeHtml(presentation)}</td>
           <td>${escapeHtml(output.destination)}</td>
-          <td>${formatNumber.format(output.quantity)}</td>
+          <td>${escapeHtml(formatOutputQuantity(output, product))}</td>
           <td>${escapeHtml(output.reason)}</td>
           <td>${escapeHtml(output.responsible || "-")}</td>
           <td class="actions-cell">
@@ -836,8 +916,8 @@ function renderStock() {
         <td>${escapeHtml(movement.date)}</td>
         <td><span class="badge ${movement.type === "Compra" ? "info" : "warning"}">${movement.type}</span></td>
         <td>${escapeHtml(product?.name || "Producto eliminado")}</td>
-        <td>${movement.entry ? formatNumber.format(movement.entry) : "-"}</td>
-        <td>${movement.output ? formatNumber.format(movement.output) : "-"}</td>
+        <td>${movement.entry ? escapeHtml(movement.amountLabel || formatNumber.format(movement.entry)) : "-"}</td>
+        <td>${movement.output ? escapeHtml(movement.amountLabel || formatNumber.format(movement.output)) : "-"}</td>
         <td>${escapeHtml(movement.detail || "-")}</td>
       </tr>
     `;
@@ -953,6 +1033,7 @@ async function handleOutputSubmit(event) {
   const quantity = toNumber(document.querySelector("#output-quantity").value);
   const presentation = elements.outputPresentation.value.trim();
   const available = getPresentationStock(product, presentation);
+  const conversion = getOutputQuantityConversion(product, presentation, quantity, elements.outputQuantityUnit.value);
 
   if (quantity <= 0) {
     showToast("Ingrese una cantidad valida.");
@@ -964,7 +1045,12 @@ async function handleOutputSubmit(event) {
     return;
   }
 
-  if (quantity > available) {
+  if (!conversion) {
+    showToast("No se pudo convertir esa presentacion.");
+    return;
+  }
+
+  if (conversion.quantity > available) {
     showToast(`Stock insuficiente para ${presentation}. Disponible: ${formatNumber.format(available)} ${product.unit}.`);
     return;
   }
@@ -975,7 +1061,10 @@ async function handleOutputSubmit(event) {
     date: document.querySelector("#output-date").value,
     presentation,
     destination: document.querySelector("#output-destination").value.trim(),
-    quantity,
+    quantity: conversion.quantity,
+    usedQuantity: conversion.usedQuantity,
+    usedUnit: conversion.usedUnit,
+    quantityMode: conversion.quantityMode,
     reason: document.querySelector("#output-reason").value,
     responsible: document.querySelector("#output-responsible").value.trim()
   };
@@ -1101,6 +1190,19 @@ function updateOutputPresentation() {
   elements.outputPresentation.value = product?.presentation || "";
 }
 
+function updateOutputQuantityUnitOptions() {
+  const product = getProduct(elements.outputProduct.value);
+  if (!product) {
+    elements.outputQuantityUnit.innerHTML = "";
+    return;
+  }
+
+  const presentation = elements.outputPresentation.value.trim() || product.presentation;
+  elements.outputQuantityUnit.innerHTML = getOutputQuantityOptions(product, presentation)
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+    .join("");
+}
+
 function updateAvailableStock() {
   const product = getProduct(elements.outputProduct.value);
   if (!product) {
@@ -1110,7 +1212,9 @@ function updateAvailableStock() {
 
   const presentation = elements.outputPresentation.value.trim() || product.presentation;
   const stock = getPresentationStock(product, presentation);
-  elements.availableStock.textContent = `Stock: ${formatNumber.format(stock)} ${product.unit} de ${presentation}`;
+  const info = getPresentationInfo(presentation);
+  const physicalStock = info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * stock)})`;
+  elements.availableStock.textContent = `Stock: ${formatNumber.format(stock)} ${product.unit} de ${presentation}${physicalStock}`;
 }
 
 function exportCsv() {
@@ -1186,9 +1290,14 @@ function bindEvents() {
   elements.purchaseProduct.addEventListener("change", updatePurchasePresentation);
   elements.outputProduct.addEventListener("change", () => {
     updateOutputPresentation();
+    updateOutputQuantityUnitOptions();
     updateAvailableStock();
   });
-  elements.outputPresentation.addEventListener("input", updateAvailableStock);
+  elements.outputPresentation.addEventListener("input", () => {
+    updateOutputQuantityUnitOptions();
+    updateAvailableStock();
+  });
+  elements.outputQuantityUnit.addEventListener("change", updateAvailableStock);
   window.addEventListener("focus", refreshStateFromServer);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshStateFromServer();

@@ -590,38 +590,52 @@ function getPresentationStock(product, presentation) {
 }
 
 function getPreferredPhysicalUnit(info) {
+  const options = getPhysicalUnitOptions(info);
+  return options?.[0] || null;
+}
+
+function getPhysicalUnitOptions(info) {
   if (info.baseValue === null || info.baseValue <= 0) return null;
 
   if (info.group === "volume") {
-    return info.baseValue >= 1000
-      ? { label: "litros", unit: "L", baseFactor: 1000 }
-      : { label: "ml", unit: "ml", baseFactor: 1 };
+    const options = [
+      { value: "physical:L", label: "litros", unit: "L", baseFactor: 1000 },
+      { value: "physical:ml", label: "ml", unit: "ml", baseFactor: 1 }
+    ];
+    return info.unit === "ml" ? options.reverse() : options;
   }
 
   if (info.group === "weight") {
-    return info.baseValue >= 1000
-      ? { label: "kg", unit: "kg", baseFactor: 1000 }
-      : { label: "g", unit: "g", baseFactor: 1 };
+    const options = [
+      { value: "physical:kg", label: "kg", unit: "kg", baseFactor: 1000 },
+      { value: "physical:g", label: "gramos", unit: "g", baseFactor: 1 }
+    ];
+    return info.unit === "g" ? options.reverse() : options;
   }
 
   if (info.group === "units") {
-    return { label: info.unit || "unidades", unit: info.unit || "unidades", baseFactor: 1 };
+    return [{
+      value: `physical:${info.unit || "unidades"}`,
+      label: info.unit || "unidades",
+      unit: info.unit || "unidades",
+      baseFactor: 1
+    }];
   }
 
-  return null;
+  return [];
 }
 
 function getOutputQuantityOptions(product, presentation) {
   const options = [];
   const info = getPresentationInfo(presentation || product.presentation);
-  const physicalUnit = getPreferredPhysicalUnit(info);
+  const physicalUnits = getPhysicalUnitOptions(info) || [];
 
-  if (physicalUnit) {
+  physicalUnits.forEach((unit) => {
     options.push({
-      value: "physical",
-      label: physicalUnit.label
+      value: unit.value,
+      label: unit.label
     });
-  }
+  });
 
   options.push({
     value: "units",
@@ -634,7 +648,7 @@ function getOutputQuantityOptions(product, presentation) {
 }
 
 function getOutputQuantityConversion(product, presentation, quantity, mode) {
-  if (mode !== "physical") {
+  if (!String(mode || "").startsWith("physical")) {
     return {
       quantity,
       usedQuantity: quantity,
@@ -644,7 +658,9 @@ function getOutputQuantityConversion(product, presentation, quantity, mode) {
   }
 
   const info = getPresentationInfo(presentation);
-  const physicalUnit = getPreferredPhysicalUnit(info);
+  const physicalUnit = mode === "physical"
+    ? getPreferredPhysicalUnit(info)
+    : (getPhysicalUnitOptions(info) || []).find((option) => option.value === mode);
   if (!physicalUnit) return null;
 
   return {

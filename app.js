@@ -400,7 +400,9 @@ function getPresentationBreakdown(product) {
   });
 
   getOutputs(product.id).forEach((output) => {
-    ensureBucket(output.presentation || product.presentation).output += toNumber(output.quantity);
+    getOutputAllocations(output, product).forEach((allocation) => {
+      ensureBucket(allocation.presentation || product.presentation).output += toNumber(allocation.quantity);
+    });
   });
 
   return [...buckets.values()]
@@ -454,7 +456,7 @@ function getMovements() {
       amountLabel: formatOutputQuantity(item, product),
       detail: [
         item.destination,
-        item.presentation || product?.presentation,
+        formatOutputPresentation(item, product),
         item.reason,
         item.responsible
       ].filter(Boolean).join(" | ")
@@ -589,6 +591,57 @@ function getPresentationStock(product, presentation) {
   return bucket?.stock || 0;
 }
 
+function getOutputAllocations(output, product) {
+  if (Array.isArray(output.allocations) && output.allocations.length) {
+    return output.allocations;
+  }
+
+  return [{
+    presentation: output.presentation || product?.presentation,
+    quantity: toNumber(output.quantity)
+  }];
+}
+
+function getCompatiblePhysicalStock(product, group) {
+  return getPresentationBreakdown(product).reduce((sum, item) => {
+    if (item.info.group !== group || item.info.baseValue === null) return sum;
+    return sum + item.info.baseValue * item.stock;
+  }, 0);
+}
+
+function createPhysicalOutputAllocations(product, preferredPresentation, group, requestedBaseQuantity) {
+  const preferredKey = getPresentationInfo(preferredPresentation || product.presentation).key;
+  const candidates = getPresentationBreakdown(product)
+    .filter((item) => item.stock > 0 && item.info.group === group && item.info.baseValue !== null)
+    .sort((left, right) => {
+      if (left.key === preferredKey) return -1;
+      if (right.key === preferredKey) return 1;
+      return right.info.baseValue - left.info.baseValue;
+    });
+
+  let pending = requestedBaseQuantity;
+  const allocations = [];
+
+  for (const item of candidates) {
+    if (pending <= 0.000001) break;
+
+    const availableBase = item.stock * item.info.baseValue;
+    const usedBase = Math.min(pending, availableBase);
+    const quantity = usedBase / item.info.baseValue;
+
+    if (quantity > 0) {
+      allocations.push({
+        presentation: item.label,
+        quantity
+      });
+    }
+
+    pending -= usedBase;
+  }
+
+  return pending <= 0.000001 ? allocations : null;
+}
+
 function getPreferredPhysicalUnit(info) {
   const options = getPhysicalUnitOptions(info);
   return options?.[0] || null;
@@ -653,7 +706,11 @@ function getOutputQuantityConversion(product, presentation, quantity, mode) {
       quantity,
       usedQuantity: quantity,
       usedUnit: product.unit,
-      quantityMode: "units"
+      quantityMode: "units",
+      allocations: [{
+        presentation,
+        quantity
+      }]
     };
   }
 
@@ -667,7 +724,9 @@ function getOutputQuantityConversion(product, presentation, quantity, mode) {
     quantity: (quantity * physicalUnit.baseFactor) / info.baseValue,
     usedQuantity: quantity,
     usedUnit: physicalUnit.unit,
-    quantityMode: "physical"
+    quantityMode: "physical",
+    physicalGroup: info.group,
+    baseQuantity: quantity * physicalUnit.baseFactor
   };
 }
 
@@ -676,6 +735,17 @@ function formatOutputQuantity(output, product) {
   const unit = output.usedUnit || product?.unit || "";
 
   return [formatNumber.format(quantity), unit].filter(Boolean).join(" ");
+}
+
+function formatOutputPresentation(output, product) {
+  const allocations = getOutputAllocations(output, product)
+    .map((allocation) => allocation.presentation)
+    .filter(Boolean);
+  const labels = [...new Set(allocations)];
+
+  if (labels.length) return labels.join(" / ");
+
+  return output.presentation || product?.presentation || "-";
 }
 
 function productCell(product) {
@@ -903,7 +973,7 @@ function renderOutputs() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((output) => {
       const product = getProduct(output.productId);
-      const presentation = output.presentation || product?.presentation || "-";
+      const presentation = formatOutputPresentation(output, product);
       return `
         <tr>
           <td>${escapeHtml(output.date)}</td>
@@ -1075,7 +1145,6 @@ async function handleOutputSubmit(event) {
 
   const quantity = toNumber(document.querySelector("#output-quantity").value);
   const presentation = elements.outputPresentation.value.trim();
-  const available = getPresentationStock(product, presentation);
   const conversion = getOutputQuantityConversion(product, presentation, quantity, elements.outputQuantityUnit.value);
 
   if (quantity <= 0) {
@@ -1093,8 +1162,26 @@ async function handleOutputSubmit(event) {
     return;
   }
 
-  if (conversion.quantity > available) {
+  const available = conversion.quantityMode === "physical"
+    ? getCompatiblePhysicalStock(product, conversion.physicalGroup)
+    : getPresentationStock(product, presentation);
+
+  if (conversion.quantityMode === "physical" && conversion.baseQuantity > available) {
+    showToast(`Stock insuficiente. Disponible: ${formatPhysicalTotal(conversion.physicalGroup, available, conversion.usedUnit)}.`);
+    return;
+  }
+
+  if (conversion.quantityMode !== "physical" && conversion.quantity > available) {
     showToast(`Stock insuficiente para ${presentation}. Disponible: ${formatNumber.format(available)} ${product.unit}.`);
+    return;
+  }
+
+  const allocations = conversion.quantityMode === "physical"
+    ? createPhysicalOutputAllocations(product, presentation, conversion.physicalGroup, conversion.baseQuantity)
+    : conversion.allocations;
+
+  if (!allocations) {
+    showToast("No se pudo distribuir la salida entre presentaciones disponibles.");
     return;
   }
 
@@ -1104,7 +1191,8 @@ async function handleOutputSubmit(event) {
     date: document.querySelector("#output-date").value,
     presentation,
     destination: document.querySelector("#output-destination").value.trim(),
-    quantity: conversion.quantity,
+    quantity: allocations.reduce((sum, item) => sum + toNumber(item.quantity), 0),
+    allocations,
     usedQuantity: conversion.usedQuantity,
     usedUnit: conversion.usedUnit,
     quantityMode: conversion.quantityMode,
@@ -1254,8 +1342,16 @@ function updateAvailableStock() {
   }
 
   const presentation = elements.outputPresentation.value.trim() || product.presentation;
-  const stock = getPresentationStock(product, presentation);
   const info = getPresentationInfo(presentation);
+  const unitMode = elements.outputQuantityUnit.value;
+
+  if (String(unitMode || "").startsWith("physical") && info.baseValue !== null) {
+    const total = getCompatiblePhysicalStock(product, info.group);
+    elements.availableStock.textContent = `Stock total: ${formatPhysicalTotal(info.group, total, info.unit)}`;
+    return;
+  }
+
+  const stock = getPresentationStock(product, presentation);
   const physicalStock = info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * stock, info.unit)})`;
   elements.availableStock.textContent = `Stock: ${formatNumber.format(stock)} ${product.unit} de ${presentation}${physicalStock}`;
 }

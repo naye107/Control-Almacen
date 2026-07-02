@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260505-1">
+    <link rel="stylesheet" href="styles.css?v=20260702-1">
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -203,7 +203,16 @@
         </section>
 
         <section class="view" id="view-purchases" data-title="Compras">
-          <section class="panel">
+          <section class="panel toolbar-panel">
+            <div class="section-heading">
+              <h2>Compras</h2>
+            </div>
+            <div class="toolbar">
+              <button class="ghost-button" type="button" id="print-purchases">Imprimir</button>
+            </div>
+          </section>
+
+          <section class="panel print-hidden">
             <div class="section-heading">
               <h2>Nueva compra</h2>
             </div>
@@ -265,7 +274,16 @@
         </section>
 
         <section class="view" id="view-outputs" data-title="Salidas">
-          <section class="panel">
+          <section class="panel toolbar-panel">
+            <div class="section-heading">
+              <h2>Salidas</h2>
+            </div>
+            <div class="toolbar">
+              <button class="ghost-button" type="button" id="print-outputs">Imprimir</button>
+            </div>
+          </section>
+
+          <section class="panel print-hidden">
             <div class="section-heading">
               <h2>Nueva salida</h2>
               <span id="available-stock" class="counter">Stock: 0</span>
@@ -399,6 +417,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260530-1" defer></script>
+    <script src="app.js?v=20260702-1" defer></script>
   </body>
 </html>

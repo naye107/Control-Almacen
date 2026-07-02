@@ -1311,6 +1311,11 @@ function closeMobileNav() {
   }
 }
 
+function printView(viewName) {
+  document.body.dataset.printView = viewName;
+  window.print();
+}
+
 function updatePurchasePresentation() {
   const product = getProduct(elements.purchaseProduct.value);
   elements.purchasePresentation.value = product?.presentation || "";
@@ -1443,7 +1448,12 @@ function bindEvents() {
   });
   document.querySelector("#export-data").addEventListener("click", exportCsv);
   elements.logoutButton.addEventListener("click", handleLogout);
-  document.querySelector("#print-stock").addEventListener("click", () => window.print());
+  document.querySelector("#print-purchases").addEventListener("click", () => printView("purchases"));
+  document.querySelector("#print-outputs").addEventListener("click", () => printView("outputs"));
+  document.querySelector("#print-stock").addEventListener("click", () => printView("stock"));
+  window.addEventListener("afterprint", () => {
+    delete document.body.dataset.printView;
+  });
   document.body.addEventListener("click", handleTableAction);
 }
 

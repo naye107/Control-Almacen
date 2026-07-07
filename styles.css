@@ -437,6 +437,63 @@ select:focus {
   align-self: end;
 }
 
+.output-form {
+  display: grid;
+  gap: 14px;
+}
+
+.output-common-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.bulk-output {
+  display: grid;
+  gap: 10px;
+}
+
+.bulk-heading {
+  margin-bottom: 0;
+}
+
+.bulk-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.bulk-output-table {
+  min-width: 1040px;
+}
+
+.bulk-output-table th:nth-child(1),
+.bulk-output-table td:nth-child(1) {
+  width: 27%;
+}
+
+.bulk-output-table th:nth-child(2),
+.bulk-output-table td:nth-child(2) {
+  width: 20%;
+}
+
+.bulk-output-table th:nth-child(3),
+.bulk-output-table td:nth-child(3) {
+  width: 12%;
+}
+
+.bulk-output-table th:nth-child(4),
+.bulk-output-table td:nth-child(4) {
+  width: 14%;
+}
+
+.output-line-stock {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.form-actions-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);

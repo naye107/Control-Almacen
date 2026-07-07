@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-1">
+    <link rel="stylesheet" href="styles.css?v=20260707-2">
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -286,47 +286,66 @@
           <section class="panel print-hidden">
             <div class="section-heading">
               <h2>Nueva salida</h2>
-              <span id="available-stock" class="counter">Stock: 0</span>
+              <span id="available-stock" class="counter">0 productos</span>
             </div>
-            <form id="output-form" class="form-grid">
-              <label>
-                Producto
-                <select id="output-product" required></select>
-              </label>
-              <label>
-                Presentacion
-                <input id="output-presentation" required autocomplete="off" placeholder="Bidon 10 L">
-              </label>
-              <label>
-                Fecha
-                <input id="output-date" type="date" required>
-              </label>
-              <label>
-                Destino
-                <input id="output-destination" required autocomplete="off" placeholder="Campo, cliente, area">
-              </label>
-              <label>
-                Cantidad
-                <input id="output-quantity" type="number" min="0.01" step="0.01" required>
-              </label>
-              <label>
-                Unidad
-                <select id="output-quantity-unit" required></select>
-              </label>
-              <label>
-                Motivo
-                <select id="output-reason" required>
-                  <option value="Aplicacion">Aplicacion</option>
-                  <option value="Venta">Venta</option>
-                  <option value="Traslado">Traslado</option>
-                  <option value="Ajuste">Ajuste</option>
-                </select>
-              </label>
-              <label>
-                Responsable
-                <input id="output-responsible" autocomplete="off" placeholder="Responsable">
-              </label>
-              <button class="primary-button form-action" type="submit">Registrar salida</button>
+            <form id="output-form" class="output-form">
+              <div class="form-grid output-common-grid">
+                <label>
+                  Fecha
+                  <input id="output-date" type="date" required>
+                </label>
+                <label>
+                  Destino
+                  <input id="output-destination" required autocomplete="off" placeholder="Campo, cliente, area">
+                </label>
+                <label>
+                  Motivo
+                  <select id="output-reason" required>
+                    <option value="Aplicacion">Aplicacion</option>
+                    <option value="Venta">Venta</option>
+                    <option value="Traslado">Traslado</option>
+                    <option value="Ajuste">Ajuste</option>
+                  </select>
+                </label>
+                <label>
+                  Responsable
+                  <input id="output-responsible" autocomplete="off" placeholder="Responsable">
+                </label>
+                <label>
+                  Bloque del campo
+                  <select id="output-template">
+                    <option value="">Sin bloque</option>
+                  </select>
+                </label>
+                <button class="ghost-button form-action" type="button" id="load-output-template">Cargar bloque</button>
+                <button class="ghost-button form-action" type="button" id="save-output-template">Guardar bloque</button>
+              </div>
+
+              <div class="bulk-output">
+                <div class="section-heading bulk-heading">
+                  <h3>Productos</h3>
+                  <button class="ghost-button" type="button" id="add-output-line">Agregar producto</button>
+                </div>
+                <div class="table-wrap">
+                  <table class="bulk-output-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Presentacion</th>
+                        <th>Cantidad</th>
+                        <th>Unidad</th>
+                        <th>Stock</th>
+                        <th class="actions-cell">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="output-lines"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="form-actions-row">
+                <button class="primary-button" type="submit">Registrar salidas</button>
+              </div>
             </form>
           </section>
 
@@ -429,6 +448,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260707-1" defer></script>
+    <script src="app.js?v=20260707-2" defer></script>
   </body>
 </html>

@@ -1,10 +1,12 @@
 const STORAGE_KEY = "fertistock.v1";
+const OUTPUT_TEMPLATES_KEY = "fertistock.outputTemplates.v1";
 let backendAvailable = false;
 let saveQueue = Promise.resolve();
 let appEventsBound = false;
 let syncTimer = null;
 let isSyncing = false;
 let lastServerSnapshot = "";
+let outputTemplates = [];
 
 const state = {
   products: [],
@@ -44,14 +46,16 @@ const elements = {
   purchaseCount: document.querySelector("#purchase-count"),
   outputsTable: document.querySelector("#outputs-table"),
   outputCount: document.querySelector("#output-count"),
+  outputLines: document.querySelector("#output-lines"),
+  outputTemplate: document.querySelector("#output-template"),
+  addOutputLine: document.querySelector("#add-output-line"),
+  loadOutputTemplate: document.querySelector("#load-output-template"),
+  saveOutputTemplate: document.querySelector("#save-output-template"),
   stockTable: document.querySelector("#stock-table"),
   kardexTable: document.querySelector("#kardex-table"),
   kardexCount: document.querySelector("#kardex-count"),
   purchaseProduct: document.querySelector("#purchase-product"),
   purchasePresentation: document.querySelector("#purchase-presentation"),
-  outputProduct: document.querySelector("#output-product"),
-  outputPresentation: document.querySelector("#output-presentation"),
-  outputQuantityUnit: document.querySelector("#output-quantity-unit"),
   availableStock: document.querySelector("#available-stock"),
   cancelProductEdit: document.querySelector("#cancel-product-edit"),
   logoutButton: document.querySelector("#logout-button")
@@ -171,6 +175,23 @@ function readLocalState() {
     showToast("No se pudo leer la informacion guardada.");
     return { products: [], purchases: [], outputs: [] };
   }
+}
+
+function readOutputTemplates() {
+  const saved = localStorage.getItem(OUTPUT_TEMPLATES_KEY);
+  if (!saved) return [];
+
+  try {
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed.filter((template) => Array.isArray(template?.items)) : [];
+  } catch {
+    showToast("No se pudieron leer los bloques guardados.");
+    return [];
+  }
+}
+
+function saveOutputTemplates() {
+  localStorage.setItem(OUTPUT_TEMPLATES_KEY, JSON.stringify(outputTemplates));
 }
 
 function setState(nextState) {
@@ -373,7 +394,7 @@ function getPresentationInfo(presentation) {
   };
 }
 
-function getPresentationBreakdown(product) {
+function getPresentationBreakdown(product, extraOutputs = []) {
   const buckets = new Map();
 
   function ensureBucket(presentation) {
@@ -401,7 +422,7 @@ function getPresentationBreakdown(product) {
     ensureBucket(purchase.presentation || product.presentation).purchased += toNumber(purchase.quantity);
   });
 
-  getOutputs(product.id).forEach((output) => {
+  [...getOutputs(product.id), ...extraOutputs.filter((output) => output.productId === product.id)].forEach((output) => {
     getOutputAllocations(output, product).forEach((allocation) => {
       ensureBucket(allocation.presentation || product.presentation).output += toNumber(allocation.quantity);
     });
@@ -586,9 +607,9 @@ function presentationSummary(product) {
   return `${labels.slice(0, 2).join(" / ")} +${labels.length - 2}`;
 }
 
-function getPresentationStock(product, presentation) {
+function getPresentationStock(product, presentation, extraOutputs = []) {
   const key = getPresentationInfo(presentation || product.presentation).key;
-  const bucket = getPresentationBreakdown(product).find((item) => item.key === key);
+  const bucket = getPresentationBreakdown(product, extraOutputs).find((item) => item.key === key);
 
   return bucket?.stock || 0;
 }
@@ -604,16 +625,16 @@ function getOutputAllocations(output, product) {
   }];
 }
 
-function getCompatiblePhysicalStock(product, group) {
-  return getPresentationBreakdown(product).reduce((sum, item) => {
+function getCompatiblePhysicalStock(product, group, extraOutputs = []) {
+  return getPresentationBreakdown(product, extraOutputs).reduce((sum, item) => {
     if (item.info.group !== group || item.info.baseValue === null) return sum;
     return sum + item.info.baseValue * item.stock;
   }, 0);
 }
 
-function createPhysicalOutputAllocations(product, preferredPresentation, group, requestedBaseQuantity) {
+function createPhysicalOutputAllocations(product, preferredPresentation, group, requestedBaseQuantity, extraOutputs = []) {
   const preferredKey = getPresentationInfo(preferredPresentation || product.presentation).key;
-  const candidates = getPresentationBreakdown(product)
+  const candidates = getPresentationBreakdown(product, extraOutputs)
     .filter((item) => item.stock > 0 && item.info.group === group && item.info.baseValue !== null)
     .sort((left, right) => {
       if (left.key === preferredKey) return -1;
@@ -777,8 +798,8 @@ function setFormDefaults() {
   document.querySelector("#output-date").value = today();
 }
 
-function renderProductOptions() {
-  const activeProducts = state.products
+function getActiveProducts() {
+  return state.products
     .filter((product) => product.active !== false)
     .sort((left, right) => {
       const nameSort = String(left.name || "").localeCompare(String(right.name || ""), "es", {
@@ -793,22 +814,38 @@ function renderProductOptions() {
         sensitivity: "base"
       });
     });
-  const options = activeProducts
+}
+
+function productOptionLabel(product) {
+  const activeIngredient = product.activeIngredient ? ` - ${product.activeIngredient}` : "";
+  return `${product.name}${activeIngredient}`;
+}
+
+function getProductOptionsHtml(selectedId = "") {
+  const activeProducts = getActiveProducts();
+  const selectedProduct = selectedId ? getProduct(selectedId) : null;
+  const products = selectedProduct && !activeProducts.some((product) => product.id === selectedProduct.id)
+    ? [...activeProducts, selectedProduct]
+    : activeProducts;
+
+  return products
     .map((product) => {
-      const activeIngredient = product.activeIngredient ? ` - ${product.activeIngredient}` : "";
-      return `<option value="${product.id}">${escapeHtml(product.name)}${escapeHtml(activeIngredient)}</option>`;
+      const selected = product.id === selectedId ? " selected" : "";
+      return `<option value="${escapeHtml(product.id)}"${selected}>${escapeHtml(productOptionLabel(product))}</option>`;
     })
     .join("");
+}
+
+function renderProductOptions() {
+  const activeProducts = getActiveProducts();
+  const options = getProductOptionsHtml(elements.purchaseProduct.value);
 
   const fallback = `<option value="" disabled selected>Registre un producto</option>`;
   elements.purchaseProduct.innerHTML = options || fallback;
-  elements.outputProduct.innerHTML = options || fallback;
   elements.purchaseProduct.disabled = activeProducts.length === 0;
-  elements.outputProduct.disabled = activeProducts.length === 0;
+  syncOutputLineProductOptions();
+  ensureOutputLine();
   updatePurchasePresentation();
-  updateOutputPresentation();
-  updateOutputQuantityUnitOptions();
-  updateAvailableStock();
 }
 
 function renderCategoryOptions() {
@@ -851,6 +888,219 @@ function renderStockFilterOptions() {
     uniqueSortedValues(state.products.map((product) => product.activeIngredient)),
     "Todas"
   );
+}
+
+function getOutputLineRows() {
+  return [...elements.outputLines.querySelectorAll("[data-output-line]")];
+}
+
+function fillOutputLineProductOptions(row, selectedId = "") {
+  const select = row.querySelector(".output-line-product");
+  const current = selectedId || select.value || getActiveProducts()[0]?.id || "";
+  const options = getProductOptionsHtml(current);
+
+  select.innerHTML = options || `<option value="" disabled selected>Registre un producto</option>`;
+  select.disabled = !options;
+  if (current && getProduct(current)) select.value = current;
+}
+
+function updateOutputLinePresentation(row) {
+  const product = getProduct(row.querySelector(".output-line-product").value);
+  row.querySelector(".output-line-presentation").value = product?.presentation || "";
+}
+
+function updateOutputLineQuantityUnitOptions(row, preferredMode = "") {
+  const product = getProduct(row.querySelector(".output-line-product").value);
+  const unitSelect = row.querySelector(".output-line-unit");
+  if (!product) {
+    unitSelect.innerHTML = "";
+    return;
+  }
+
+  const current = preferredMode || unitSelect.value;
+  const presentation = row.querySelector(".output-line-presentation").value.trim() || product.presentation;
+  const options = getOutputQuantityOptions(product, presentation);
+  unitSelect.innerHTML = options
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+    .join("");
+
+  if (options.some((option) => option.value === current)) {
+    unitSelect.value = current;
+  }
+}
+
+function updateOutputLineStock(row) {
+  const stockCell = row.querySelector(".output-line-stock");
+  const product = getProduct(row.querySelector(".output-line-product").value);
+  if (!product) {
+    stockCell.textContent = "Stock: 0";
+    return;
+  }
+
+  const presentation = row.querySelector(".output-line-presentation").value.trim() || product.presentation;
+  const info = getPresentationInfo(presentation);
+  const unitMode = row.querySelector(".output-line-unit").value;
+
+  if (String(unitMode || "").startsWith("physical") && info.baseValue !== null) {
+    const total = getCompatiblePhysicalStock(product, info.group);
+    stockCell.textContent = `Total: ${formatPhysicalTotal(info.group, total, info.unit)}`;
+    return;
+  }
+
+  const stock = getPresentationStock(product, presentation);
+  const physicalStock = info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * stock, info.unit)})`;
+  stockCell.textContent = `${formatNumber.format(stock)} ${product.unit}${physicalStock}`;
+}
+
+function updateOutputSummary() {
+  const count = getOutputLineRows().filter((row) => row.querySelector(".output-line-product").value).length;
+  elements.availableStock.textContent = `${count} producto${count === 1 ? "" : "s"}`;
+}
+
+function addOutputLine(item = {}) {
+  const row = document.createElement("tr");
+  row.dataset.outputLine = "true";
+  row.innerHTML = `
+    <td>
+      <select class="output-line-product"></select>
+    </td>
+    <td>
+      <input class="output-line-presentation" autocomplete="off" placeholder="Saco 25 kg">
+    </td>
+    <td>
+      <input class="output-line-quantity" type="number" min="0.01" step="0.01">
+    </td>
+    <td>
+      <select class="output-line-unit"></select>
+    </td>
+    <td class="output-line-stock">Stock: 0</td>
+    <td class="actions-cell">
+      <button class="icon-button danger" type="button" title="Quitar producto" data-output-action="remove-line">Quitar</button>
+    </td>
+  `;
+
+  elements.outputLines.append(row);
+  fillOutputLineProductOptions(row, item.productId);
+  if (item.presentation) {
+    row.querySelector(".output-line-presentation").value = item.presentation;
+  } else {
+    updateOutputLinePresentation(row);
+  }
+  if (item.quantity !== undefined && item.quantity !== null && item.quantity !== "") {
+    row.querySelector(".output-line-quantity").value = item.quantity;
+  }
+  updateOutputLineQuantityUnitOptions(row, item.unitMode);
+  updateOutputLineStock(row);
+  updateOutputSummary();
+  return row;
+}
+
+function ensureOutputLine() {
+  if (getOutputLineRows().length === 0) addOutputLine();
+}
+
+function resetOutputLines() {
+  elements.outputLines.innerHTML = "";
+  addOutputLine();
+}
+
+function syncOutputLineProductOptions() {
+  getOutputLineRows().forEach((row) => {
+    fillOutputLineProductOptions(row);
+    updateOutputLineQuantityUnitOptions(row);
+    updateOutputLineStock(row);
+  });
+  updateOutputSummary();
+}
+
+function readOutputLine(row) {
+  const quantityInput = row.querySelector(".output-line-quantity").value.trim();
+  return {
+    row,
+    productId: row.querySelector(".output-line-product").value,
+    product: getProduct(row.querySelector(".output-line-product").value),
+    presentation: row.querySelector(".output-line-presentation").value.trim(),
+    quantityInput,
+    quantity: toNumber(quantityInput),
+    unitMode: row.querySelector(".output-line-unit").value
+  };
+}
+
+function getOutputTemplateItems(requireQuantity = false) {
+  return getOutputLineRows()
+    .map(readOutputLine)
+    .filter((line) => line.product && line.presentation && (!requireQuantity || line.quantity > 0))
+    .map((line) => ({
+      productId: line.productId,
+      presentation: line.presentation,
+      quantity: line.quantityInput,
+      unitMode: line.unitMode
+    }));
+}
+
+function renderOutputTemplateOptions() {
+  const current = elements.outputTemplate.value;
+  const sorted = [...outputTemplates].sort((left, right) => {
+    return String(left.destination || left.name || "").localeCompare(String(right.destination || right.name || ""), "es", {
+      numeric: true,
+      sensitivity: "base"
+    });
+  });
+
+  elements.outputTemplate.innerHTML = [
+    `<option value="">Sin bloque</option>`,
+    ...sorted.map((template) => {
+      const label = template.destination || template.name || "Bloque";
+      return `<option value="${escapeHtml(template.id)}">${escapeHtml(label)}</option>`;
+    })
+  ].join("");
+  elements.outputTemplate.value = outputTemplates.some((template) => template.id === current) ? current : "";
+}
+
+function loadSelectedOutputTemplate() {
+  const template = outputTemplates.find((item) => item.id === elements.outputTemplate.value);
+  if (!template) {
+    showToast("Seleccione un bloque guardado.");
+    return;
+  }
+
+  document.querySelector("#output-destination").value = template.destination || "";
+  elements.outputLines.innerHTML = "";
+  template.items.forEach((item) => addOutputLine(item));
+  ensureOutputLine();
+  updateOutputSummary();
+  showToast("Bloque cargado.");
+}
+
+function saveCurrentOutputTemplate() {
+  const destination = document.querySelector("#output-destination").value.trim();
+  if (!destination) {
+    showToast("Indique el destino para guardar el bloque.");
+    return;
+  }
+
+  const items = getOutputTemplateItems(false);
+  if (items.length === 0) {
+    showToast("Agregue productos al bloque.");
+    return;
+  }
+
+  const existing = outputTemplates.find((template) => normalize(template.destination) === normalize(destination));
+  const template = {
+    id: existing?.id || uid(),
+    name: destination,
+    destination,
+    items,
+    updatedAt: new Date().toISOString()
+  };
+
+  outputTemplates = existing
+    ? outputTemplates.map((item) => item.id === existing.id ? template : item)
+    : [...outputTemplates, template];
+  saveOutputTemplates();
+  renderOutputTemplateOptions();
+  elements.outputTemplate.value = template.id;
+  showToast("Bloque guardado.");
 }
 
 function renderMetrics() {
@@ -1082,6 +1332,7 @@ function renderStock() {
 function renderAll() {
   renderCategoryOptions();
   renderStockFilterOptions();
+  renderOutputTemplateOptions();
   renderProductOptions();
   renderMetrics();
   renderDashboard();
@@ -1180,80 +1431,104 @@ async function handlePurchaseSubmit(event) {
 async function handleOutputSubmit(event) {
   event.preventDefault();
 
-  const product = getProduct(elements.outputProduct.value);
-  if (!product) {
-    showToast("Seleccione un producto.");
+  const date = document.querySelector("#output-date").value;
+  const destination = document.querySelector("#output-destination").value.trim();
+  const reason = document.querySelector("#output-reason").value;
+  const responsible = document.querySelector("#output-responsible").value.trim();
+
+  if (!date) {
+    showToast("Indique la fecha de la salida.");
     return;
   }
 
-  const quantity = toNumber(document.querySelector("#output-quantity").value);
-  const presentation = elements.outputPresentation.value.trim();
-  const conversion = getOutputQuantityConversion(product, presentation, quantity, elements.outputQuantityUnit.value);
-
-  if (quantity <= 0) {
-    showToast("Ingrese una cantidad valida.");
-    return;
-  }
-
-  if (!presentation) {
-    showToast("Indique la presentacion de la salida.");
-    return;
-  }
-
-  if (!conversion) {
-    showToast("No se pudo convertir esa presentacion.");
-    return;
-  }
-
-  const available = conversion.quantityMode === "physical"
-    ? getCompatiblePhysicalStock(product, conversion.physicalGroup)
-    : getPresentationStock(product, presentation);
-
-  if (conversion.quantityMode === "physical" && conversion.baseQuantity > available) {
-    showToast(`Stock insuficiente. Disponible: ${formatPhysicalTotal(conversion.physicalGroup, available, conversion.usedUnit)}.`);
-    return;
-  }
-
-  if (conversion.quantityMode !== "physical" && conversion.quantity > available) {
-    showToast(`Stock insuficiente para ${presentation}. Disponible: ${formatNumber.format(available)} ${product.unit}.`);
-    return;
-  }
-
-  const allocations = conversion.quantityMode === "physical"
-    ? createPhysicalOutputAllocations(product, presentation, conversion.physicalGroup, conversion.baseQuantity)
-    : conversion.allocations;
-
-  if (!allocations) {
-    showToast("No se pudo distribuir la salida entre presentaciones disponibles.");
-    return;
-  }
-
-  const output = {
-    id: uid(),
-    productId: product.id,
-    date: document.querySelector("#output-date").value,
-    presentation,
-    destination: document.querySelector("#output-destination").value.trim(),
-    quantity: allocations.reduce((sum, item) => sum + toNumber(item.quantity), 0),
-    allocations,
-    usedQuantity: conversion.usedQuantity,
-    usedUnit: conversion.usedUnit,
-    quantityMode: conversion.quantityMode,
-    reason: document.querySelector("#output-reason").value,
-    responsible: document.querySelector("#output-responsible").value.trim()
-  };
-
-  if (!output.destination) {
+  if (!destination) {
     showToast("Indique el destino de la salida.");
     return;
   }
 
-  state.outputs.push(output);
+  const filledLines = getOutputLineRows()
+    .map(readOutputLine)
+    .filter((line) => line.quantityInput);
+
+  if (filledLines.length === 0) {
+    showToast("Agregue al menos un producto con cantidad.");
+    return;
+  }
+
+  const outputs = [];
+  const plannedOutputs = [];
+
+  for (const line of filledLines) {
+    if (!line.product) {
+      showToast("Seleccione un producto en todas las filas.");
+      return;
+    }
+
+    if (!line.presentation) {
+      showToast(`Indique la presentacion de ${line.product.name}.`);
+      return;
+    }
+
+    if (line.quantity <= 0) {
+      showToast(`Ingrese una cantidad valida para ${line.product.name}.`);
+      return;
+    }
+
+    const conversion = getOutputQuantityConversion(line.product, line.presentation, line.quantity, line.unitMode);
+    if (!conversion) {
+      showToast(`No se pudo convertir la presentacion de ${line.product.name}.`);
+      return;
+    }
+
+    const available = conversion.quantityMode === "physical"
+      ? getCompatiblePhysicalStock(line.product, conversion.physicalGroup, plannedOutputs)
+      : getPresentationStock(line.product, line.presentation, plannedOutputs);
+
+    if (conversion.quantityMode === "physical" && conversion.baseQuantity > available) {
+      showToast(`Stock insuficiente para ${line.product.name}. Disponible: ${formatPhysicalTotal(conversion.physicalGroup, available, conversion.usedUnit)}.`);
+      return;
+    }
+
+    if (conversion.quantityMode !== "physical" && conversion.quantity > available) {
+      showToast(`Stock insuficiente para ${line.product.name} (${line.presentation}). Disponible: ${formatNumber.format(available)} ${line.product.unit}.`);
+      return;
+    }
+
+    const allocations = conversion.quantityMode === "physical"
+      ? createPhysicalOutputAllocations(line.product, line.presentation, conversion.physicalGroup, conversion.baseQuantity, plannedOutputs)
+      : conversion.allocations;
+
+    if (!allocations) {
+      showToast(`No se pudo distribuir la salida de ${line.product.name}.`);
+      return;
+    }
+
+    const output = {
+      id: uid(),
+      productId: line.product.id,
+      date,
+      presentation: line.presentation,
+      destination,
+      quantity: allocations.reduce((sum, item) => sum + toNumber(item.quantity), 0),
+      allocations,
+      usedQuantity: conversion.usedQuantity,
+      usedUnit: conversion.usedUnit,
+      quantityMode: conversion.quantityMode,
+      reason,
+      responsible
+    };
+
+    outputs.push(output);
+    plannedOutputs.push(output);
+  }
+
+  state.outputs.push(...outputs);
   if (!(await saveState())) return;
   outputForm.reset();
   setFormDefaults();
+  resetOutputLines();
   renderAll();
-  showToast("Salida registrada.");
+  showToast(`${outputs.length} salida${outputs.length === 1 ? "" : "s"} registrada${outputs.length === 1 ? "" : "s"}.`);
 }
 
 function editProduct(productId) {
@@ -1364,46 +1639,6 @@ function updatePurchasePresentation() {
   elements.purchasePresentation.value = product?.presentation || "";
 }
 
-function updateOutputPresentation() {
-  const product = getProduct(elements.outputProduct.value);
-  elements.outputPresentation.value = product?.presentation || "";
-}
-
-function updateOutputQuantityUnitOptions() {
-  const product = getProduct(elements.outputProduct.value);
-  if (!product) {
-    elements.outputQuantityUnit.innerHTML = "";
-    return;
-  }
-
-  const presentation = elements.outputPresentation.value.trim() || product.presentation;
-  elements.outputQuantityUnit.innerHTML = getOutputQuantityOptions(product, presentation)
-    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
-    .join("");
-}
-
-function updateAvailableStock() {
-  const product = getProduct(elements.outputProduct.value);
-  if (!product) {
-    elements.availableStock.textContent = "Stock: 0";
-    return;
-  }
-
-  const presentation = elements.outputPresentation.value.trim() || product.presentation;
-  const info = getPresentationInfo(presentation);
-  const unitMode = elements.outputQuantityUnit.value;
-
-  if (String(unitMode || "").startsWith("physical") && info.baseValue !== null) {
-    const total = getCompatiblePhysicalStock(product, info.group);
-    elements.availableStock.textContent = `Stock total: ${formatPhysicalTotal(info.group, total, info.unit)}`;
-    return;
-  }
-
-  const stock = getPresentationStock(product, presentation);
-  const physicalStock = info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * stock, info.unit)})`;
-  elements.availableStock.textContent = `Stock: ${formatNumber.format(stock)} ${product.unit} de ${presentation}${physicalStock}`;
-}
-
 function exportCsv() {
   const rows = [
     ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Cantidad", "Stock minimo", "Estado"]
@@ -1477,16 +1712,50 @@ function bindEvents() {
   elements.stockCategoryFilter.addEventListener("change", renderStock);
   elements.stockActiveFilter.addEventListener("change", renderStock);
   elements.purchaseProduct.addEventListener("change", updatePurchasePresentation);
-  elements.outputProduct.addEventListener("change", () => {
-    updateOutputPresentation();
-    updateOutputQuantityUnitOptions();
-    updateAvailableStock();
+  elements.addOutputLine.addEventListener("click", () => addOutputLine());
+  elements.loadOutputTemplate.addEventListener("click", loadSelectedOutputTemplate);
+  elements.saveOutputTemplate.addEventListener("click", saveCurrentOutputTemplate);
+  elements.outputLines.addEventListener("change", (event) => {
+    const row = event.target.closest("[data-output-line]");
+    if (!row) return;
+
+    if (event.target.matches(".output-line-product")) {
+      updateOutputLinePresentation(row);
+      updateOutputLineQuantityUnitOptions(row);
+    }
+    if (event.target.matches(".output-line-unit")) {
+      updateOutputLineStock(row);
+    }
+
+    updateOutputLineStock(row);
+    updateOutputSummary();
   });
-  elements.outputPresentation.addEventListener("input", () => {
-    updateOutputQuantityUnitOptions();
-    updateAvailableStock();
+  elements.outputLines.addEventListener("input", (event) => {
+    const row = event.target.closest("[data-output-line]");
+    if (!row) return;
+
+    if (event.target.matches(".output-line-presentation")) {
+      updateOutputLineQuantityUnitOptions(row);
+      updateOutputLineStock(row);
+    }
+
+    updateOutputSummary();
   });
-  elements.outputQuantityUnit.addEventListener("change", updateAvailableStock);
+  elements.outputLines.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-output-action='remove-line']");
+    if (!button) return;
+
+    const row = button.closest("[data-output-line]");
+    if (getOutputLineRows().length > 1) {
+      row.remove();
+    } else {
+      row.querySelector(".output-line-quantity").value = "";
+      updateOutputLinePresentation(row);
+      updateOutputLineQuantityUnitOptions(row);
+      updateOutputLineStock(row);
+    }
+    updateOutputSummary();
+  });
   window.addEventListener("focus", refreshStateFromServer);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshStateFromServer();
@@ -1510,6 +1779,7 @@ async function startApp() {
   const loaded = await loadState();
   if (!loaded) return;
 
+  outputTemplates = readOutputTemplates();
   setFormDefaults();
   bindEvents();
   renderAll();

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260702-1">
+    <link rel="stylesheet" href="styles.css?v=20260707-1">
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -361,6 +361,18 @@
               <h2>Inventario actual</h2>
             </div>
             <div class="toolbar">
+              <label class="toolbar-field">
+                Categoria
+                <select id="stock-category-filter">
+                  <option value="">Todas</option>
+                </select>
+              </label>
+              <label class="toolbar-field">
+                Materia activa
+                <select id="stock-active-filter">
+                  <option value="">Todas</option>
+                </select>
+              </label>
               <label class="check-line">
                 <input id="only-low-stock" type="checkbox">
                 Bajo minimo
@@ -417,6 +429,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260702-1" defer></script>
+    <script src="app.js?v=20260707-1" defer></script>
   </body>
 </html>

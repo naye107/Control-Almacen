@@ -26,6 +26,8 @@ const elements = {
   views: document.querySelectorAll(".view"),
   globalSearch: document.querySelector("#global-search"),
   onlyLowStock: document.querySelector("#only-low-stock"),
+  stockCategoryFilter: document.querySelector("#stock-category-filter"),
+  stockActiveFilter: document.querySelector("#stock-active-filter"),
   toast: document.querySelector("#toast"),
   metricProducts: document.querySelector("#metric-products"),
   metricStock: document.querySelector("#metric-stock"),
@@ -821,6 +823,36 @@ function renderCategoryOptions() {
     .join("");
 }
 
+function uniqueSortedValues(values) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "es", {
+      numeric: true,
+      sensitivity: "base"
+    }));
+}
+
+function setSelectOptions(select, values, allLabel) {
+  const current = select.value;
+  select.innerHTML = [
+    `<option value="">${escapeHtml(allLabel)}</option>`,
+    ...values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+  ].join("");
+  select.value = values.includes(current) ? current : "";
+}
+
+function renderStockFilterOptions() {
+  setSelectOptions(
+    elements.stockCategoryFilter,
+    uniqueSortedValues(state.products.map((product) => product.category)),
+    "Todas"
+  );
+  setSelectOptions(
+    elements.stockActiveFilter,
+    uniqueSortedValues(state.products.map((product) => product.activeIngredient)),
+    "Todas"
+  );
+}
+
 function renderMetrics() {
   const activeProducts = state.products.filter((product) => product.active !== false);
   const stats = activeProducts.map(getProductStats);
@@ -993,9 +1025,19 @@ function renderOutputs() {
 
 function renderStock() {
   const onlyLow = elements.onlyLowStock.checked;
+  const selectedCategory = normalize(elements.stockCategoryFilter.value);
+  const selectedActive = normalize(elements.stockActiveFilter.value);
+  const matchesStockFilters = (product) => {
+    if (!product) return !selectedCategory && !selectedActive;
+    const matchesCategory = !selectedCategory || normalize(product.category) === selectedCategory;
+    const matchesActive = !selectedActive || normalize(product.activeIngredient) === selectedActive;
+    return matchesCategory && matchesActive;
+  };
   const products = state.products.filter((product) => {
     const stats = getProductStats(product);
-    return (!onlyLow || stats.low) && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product), product.unit]);
+    return matchesStockFilters(product)
+      && (!onlyLow || stats.low)
+      && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product), product.unit]);
   });
 
   elements.stockTable.innerHTML = products.map((product) => {
@@ -1018,7 +1060,7 @@ function renderStock() {
 
   const movements = getMovements().filter((movement) => {
     const product = getProduct(movement.productId);
-    return matchesSearch([product?.name, movement.type, movement.detail, movement.date]);
+    return matchesStockFilters(product) && matchesSearch([product?.name, movement.type, movement.detail, movement.date]);
   });
 
   elements.kardexCount.textContent = movements.length;
@@ -1039,6 +1081,7 @@ function renderStock() {
 
 function renderAll() {
   renderCategoryOptions();
+  renderStockFilterOptions();
   renderProductOptions();
   renderMetrics();
   renderDashboard();
@@ -1431,6 +1474,8 @@ function bindEvents() {
   elements.cancelProductEdit.addEventListener("click", resetProductForm);
   elements.globalSearch.addEventListener("input", renderAll);
   elements.onlyLowStock.addEventListener("change", renderStock);
+  elements.stockCategoryFilter.addEventListener("change", renderStock);
+  elements.stockActiveFilter.addEventListener("change", renderStock);
   elements.purchaseProduct.addEventListener("change", updatePurchasePresentation);
   elements.outputProduct.addEventListener("change", () => {
     updateOutputPresentation();

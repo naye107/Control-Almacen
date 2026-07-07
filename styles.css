@@ -543,6 +543,15 @@ tr:last-child td {
   gap: 12px;
 }
 
+.toolbar-field {
+  display: grid;
+  gap: 5px;
+  min-width: 180px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .check-line {
   display: inline-flex;
   align-items: center;

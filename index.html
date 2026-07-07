@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260707-4">
+    <link rel="stylesheet" href="styles.css?v=20260707-5">
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -322,6 +322,28 @@
                 <button class="ghost-button form-action" type="button" id="save-output-template">Guardar bloque</button>
               </div>
 
+              <div id="application-dose-panel" class="application-dose-panel" hidden>
+                <label>
+                  Calculo
+                  <select id="output-quantity-mode">
+                    <option value="dose">Dosis x cilindros/tanques</option>
+                    <option value="direct">Cantidad directa</option>
+                  </select>
+                </label>
+                <label>
+                  Tipo
+                  <select id="output-dose-container-type">
+                    <option value="cilindros">Cilindros</option>
+                    <option value="tanques">Tanques</option>
+                  </select>
+                </label>
+                <label>
+                  Cantidad
+                  <input id="output-dose-container-count" type="number" min="0.01" step="0.01" placeholder="Nro.">
+                </label>
+                <span id="output-dose-help" class="calculation-help">El total se calcula por producto.</span>
+              </div>
+
               <div class="bulk-output">
                 <div class="section-heading bulk-heading">
                   <h3>Productos</h3>
@@ -333,7 +355,7 @@
                       <tr>
                         <th>Producto</th>
                         <th>Presentacion</th>
-                        <th>Cantidad</th>
+                        <th id="output-quantity-heading">Cantidad</th>
                         <th>Unidad</th>
                         <th>Stock</th>
                         <th class="actions-cell">Acciones</th>
@@ -449,6 +471,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260707-4" defer></script>
+    <script src="app.js?v=20260707-5" defer></script>
   </body>
 </html>

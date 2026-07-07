@@ -48,6 +48,13 @@ const elements = {
   outputCount: document.querySelector("#output-count"),
   outputLines: document.querySelector("#output-lines"),
   outputTemplate: document.querySelector("#output-template"),
+  outputReason: document.querySelector("#output-reason"),
+  applicationDosePanel: document.querySelector("#application-dose-panel"),
+  outputQuantityMode: document.querySelector("#output-quantity-mode"),
+  outputDoseContainerType: document.querySelector("#output-dose-container-type"),
+  outputDoseContainerCount: document.querySelector("#output-dose-container-count"),
+  outputDoseHelp: document.querySelector("#output-dose-help"),
+  outputQuantityHeading: document.querySelector("#output-quantity-heading"),
   addOutputLine: document.querySelector("#add-output-line"),
   loadOutputTemplate: document.querySelector("#load-output-template"),
   saveOutputTemplate: document.querySelector("#save-output-template"),
@@ -756,8 +763,15 @@ function getOutputQuantityConversion(product, presentation, quantity, mode) {
 function formatOutputQuantity(output, product) {
   const quantity = output.usedQuantity ?? output.quantity;
   const unit = output.usedUnit || product?.unit || "";
+  const total = [formatNumber.format(quantity), unit].filter(Boolean).join(" ");
 
-  return [formatNumber.format(quantity), unit].filter(Boolean).join(" ");
+  if (output.calculationMode === "dose" && output.doseQuantity && output.doseContainerCount) {
+    const type = output.doseContainerType === "tanques" ? "tanque" : "cilindro";
+    const containers = `${formatNumber.format(output.doseContainerCount)} ${type}${toNumber(output.doseContainerCount) === 1 ? "" : "s"}`;
+    return `${total} (dosis ${formatNumber.format(output.doseQuantity)} ${unit} x ${containers})`;
+  }
+
+  return total;
 }
 
 function formatOutputPresentation(output, product) {
@@ -929,6 +943,28 @@ function updateOutputLineQuantityUnitOptions(row, preferredMode = "") {
   }
 }
 
+function isApplicationDoseMode() {
+  return elements.outputReason.value === "Aplicacion" && elements.outputQuantityMode.value === "dose";
+}
+
+function getDoseContainerCount() {
+  return toNumber(elements.outputDoseContainerCount.value);
+}
+
+function getDoseContainerLabel(count = getDoseContainerCount()) {
+  const type = elements.outputDoseContainerType.value === "tanques" ? "tanque" : "cilindro";
+  return `${formatNumber.format(count)} ${type}${count === 1 ? "" : "s"}`;
+}
+
+function formatLineQuantity(product, presentation, quantity, unitMode) {
+  const conversion = getOutputQuantityConversion(product, presentation, quantity, unitMode);
+  if (!conversion) return "";
+
+  return [formatNumber.format(conversion.usedQuantity), conversion.usedUnit || product.unit]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function updateOutputLineStock(row) {
   const stockCell = row.querySelector(".output-line-stock");
   const product = getProduct(row.querySelector(".output-line-product").value);
@@ -940,21 +976,51 @@ function updateOutputLineStock(row) {
   const presentation = row.querySelector(".output-line-presentation").value.trim() || product.presentation;
   const info = getPresentationInfo(presentation);
   const unitMode = row.querySelector(".output-line-unit").value;
+  const doseQuantity = toNumber(row.querySelector(".output-line-quantity").value);
+  const doseCount = getDoseContainerCount();
+  const showDoseTotal = isApplicationDoseMode() && doseQuantity > 0 && doseCount > 0;
+  const stockLabel = String(unitMode || "").startsWith("physical") && info.baseValue !== null
+    ? formatPhysicalTotal(info.group, getCompatiblePhysicalStock(product, info.group), info.unit)
+    : `${formatNumber.format(getPresentationStock(product, presentation))} ${product.unit}${info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * getPresentationStock(product, presentation), info.unit)})`}`;
 
-  if (String(unitMode || "").startsWith("physical") && info.baseValue !== null) {
-    const total = getCompatiblePhysicalStock(product, info.group);
-    stockCell.textContent = `Total: ${formatPhysicalTotal(info.group, total, info.unit)}`;
+  if (showDoseTotal) {
+    const totalLabel = formatLineQuantity(product, presentation, doseQuantity * doseCount, unitMode);
+    stockCell.innerHTML = `
+      <strong>Total: ${escapeHtml(totalLabel)}</strong>
+      <small>Stock: ${escapeHtml(stockLabel)}</small>
+    `;
     return;
   }
 
-  const stock = getPresentationStock(product, presentation);
-  const physicalStock = info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * stock, info.unit)})`;
-  stockCell.textContent = `${formatNumber.format(stock)} ${product.unit}${physicalStock}`;
+  stockCell.innerHTML = `<strong>Stock: ${escapeHtml(stockLabel)}</strong>`;
 }
 
 function updateOutputSummary() {
   const count = getOutputLineRows().filter((row) => row.querySelector(".output-line-product").value).length;
-  elements.availableStock.textContent = `${count} producto${count === 1 ? "" : "s"}`;
+  const suffix = isApplicationDoseMode() && getDoseContainerCount() > 0 ? ` | ${getDoseContainerLabel()}` : "";
+  elements.availableStock.textContent = `${count} producto${count === 1 ? "" : "s"}${suffix}`;
+}
+
+function updateOutputCalculationMode() {
+  const isApplication = elements.outputReason.value === "Aplicacion";
+  elements.applicationDosePanel.hidden = !isApplication;
+
+  if (!isApplication) {
+    elements.outputQuantityMode.value = "direct";
+  }
+
+  const doseMode = isApplicationDoseMode();
+  elements.outputQuantityHeading.textContent = doseMode ? "Dosis" : "Cantidad";
+  elements.outputDoseContainerType.disabled = !doseMode;
+  elements.outputDoseContainerCount.disabled = !doseMode;
+  elements.outputDoseHelp.textContent = doseMode
+    ? `Total por producto = dosis x ${elements.outputDoseContainerType.value}.`
+    : "La cantidad se descuenta directamente.";
+  getOutputLineRows().forEach((row) => {
+    row.querySelector(".output-line-quantity").placeholder = doseMode ? "Dosis" : "Cantidad";
+    updateOutputLineStock(row);
+  });
+  updateOutputSummary();
 }
 
 function addOutputLine(item = {}) {
@@ -991,7 +1057,7 @@ function addOutputLine(item = {}) {
   }
   updateOutputLineQuantityUnitOptions(row, item.unitMode);
   updateOutputLineStock(row);
-  updateOutputSummary();
+  updateOutputCalculationMode();
   return row;
 }
 
@@ -1065,9 +1131,16 @@ function loadSelectedOutputTemplate() {
   }
 
   document.querySelector("#output-destination").value = template.destination || "";
+  if (template.calculation) {
+    elements.outputReason.value = template.calculation.reason || elements.outputReason.value;
+    elements.outputQuantityMode.value = template.calculation.quantityMode || elements.outputQuantityMode.value;
+    elements.outputDoseContainerType.value = template.calculation.containerType || elements.outputDoseContainerType.value;
+    elements.outputDoseContainerCount.value = template.calculation.containerCount || "";
+  }
   elements.outputLines.innerHTML = "";
   template.items.forEach((item) => addOutputLine(item));
   ensureOutputLine();
+  updateOutputCalculationMode();
   updateOutputSummary();
   showToast("Bloque cargado.");
 }
@@ -1090,6 +1163,12 @@ function saveCurrentOutputTemplate() {
     id: existing?.id || uid(),
     name: destination,
     destination,
+    calculation: {
+      reason: elements.outputReason.value,
+      quantityMode: elements.outputQuantityMode.value,
+      containerType: elements.outputDoseContainerType.value,
+      containerCount: elements.outputDoseContainerCount.value.trim()
+    },
     items,
     updatedAt: new Date().toISOString()
   };
@@ -1334,6 +1413,7 @@ function renderAll() {
   renderStockFilterOptions();
   renderOutputTemplateOptions();
   renderProductOptions();
+  updateOutputCalculationMode();
   renderMetrics();
   renderDashboard();
   renderProducts();
@@ -1433,8 +1513,11 @@ async function handleOutputSubmit(event) {
 
   const date = document.querySelector("#output-date").value;
   const destination = document.querySelector("#output-destination").value.trim();
-  const reason = document.querySelector("#output-reason").value;
+  const reason = elements.outputReason.value;
   const responsible = document.querySelector("#output-responsible").value.trim();
+  const doseMode = isApplicationDoseMode();
+  const containerCount = getDoseContainerCount();
+  const containerType = elements.outputDoseContainerType.value;
 
   if (!date) {
     showToast("Indique la fecha de la salida.");
@@ -1446,12 +1529,17 @@ async function handleOutputSubmit(event) {
     return;
   }
 
+  if (doseMode && containerCount <= 0) {
+    showToast("Ingrese la cantidad de cilindros o tanques.");
+    return;
+  }
+
   const filledLines = getOutputLineRows()
     .map(readOutputLine)
     .filter((line) => line.quantityInput);
 
   if (filledLines.length === 0) {
-    showToast("Agregue al menos un producto con cantidad.");
+    showToast(`Agregue al menos un producto con ${doseMode ? "dosis" : "cantidad"}.`);
     return;
   }
 
@@ -1459,6 +1547,8 @@ async function handleOutputSubmit(event) {
   const plannedOutputs = [];
 
   for (const line of filledLines) {
+    const effectiveQuantity = doseMode ? line.quantity * containerCount : line.quantity;
+
     if (!line.product) {
       showToast("Seleccione un producto en todas las filas.");
       return;
@@ -1470,11 +1560,11 @@ async function handleOutputSubmit(event) {
     }
 
     if (line.quantity <= 0) {
-      showToast(`Ingrese una cantidad valida para ${line.product.name}.`);
+      showToast(`Ingrese una ${doseMode ? "dosis" : "cantidad"} valida para ${line.product.name}.`);
       return;
     }
 
-    const conversion = getOutputQuantityConversion(line.product, line.presentation, line.quantity, line.unitMode);
+    const conversion = getOutputQuantityConversion(line.product, line.presentation, effectiveQuantity, line.unitMode);
     if (!conversion) {
       showToast(`No se pudo convertir la presentacion de ${line.product.name}.`);
       return;
@@ -1514,6 +1604,11 @@ async function handleOutputSubmit(event) {
       usedQuantity: conversion.usedQuantity,
       usedUnit: conversion.usedUnit,
       quantityMode: conversion.quantityMode,
+      calculationMode: doseMode ? "dose" : "direct",
+      doseQuantity: doseMode ? line.quantity : undefined,
+      doseUnit: doseMode ? conversion.usedUnit : undefined,
+      doseContainerCount: doseMode ? containerCount : undefined,
+      doseContainerType: doseMode ? containerType : undefined,
       reason,
       responsible
     };
@@ -1712,6 +1807,15 @@ function bindEvents() {
   elements.stockCategoryFilter.addEventListener("change", renderStock);
   elements.stockActiveFilter.addEventListener("change", renderStock);
   elements.purchaseProduct.addEventListener("change", updatePurchasePresentation);
+  elements.outputReason.addEventListener("change", () => {
+    if (elements.outputReason.value === "Aplicacion") {
+      elements.outputQuantityMode.value = "dose";
+    }
+    updateOutputCalculationMode();
+  });
+  elements.outputQuantityMode.addEventListener("change", updateOutputCalculationMode);
+  elements.outputDoseContainerType.addEventListener("change", updateOutputCalculationMode);
+  elements.outputDoseContainerCount.addEventListener("input", updateOutputCalculationMode);
   elements.addOutputLine.addEventListener("click", () => addOutputLine());
   elements.loadOutputTemplate.addEventListener("click", loadSelectedOutputTemplate);
   elements.saveOutputTemplate.addEventListener("click", saveCurrentOutputTemplate);
@@ -1736,6 +1840,10 @@ function bindEvents() {
 
     if (event.target.matches(".output-line-presentation")) {
       updateOutputLineQuantityUnitOptions(row);
+      updateOutputLineStock(row);
+    }
+
+    if (event.target.matches(".output-line-quantity")) {
       updateOutputLineStock(row);
     }
 

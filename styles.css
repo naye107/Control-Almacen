@@ -451,6 +451,35 @@ select:focus {
   gap: 10px;
 }
 
+.application-dose-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  background: #f8faf7;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.application-dose-panel[hidden] {
+  display: none;
+}
+
+.application-dose-panel label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.calculation-help {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .bulk-heading {
   margin-bottom: 0;
 }
@@ -498,7 +527,21 @@ select:focus {
 .output-line-stock {
   color: var(--muted);
   font-weight: 700;
-  white-space: nowrap;
+}
+
+.output-line-stock strong,
+.output-line-stock small {
+  display: block;
+}
+
+.output-line-stock strong {
+  color: var(--text);
+}
+
+.output-line-stock small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .bulk-output-table .actions-cell {
@@ -716,6 +759,7 @@ tr:last-child td {
   .metrics,
   .grid-two,
   .form-grid,
+  .application-dose-panel,
   .sidebar-actions {
     grid-template-columns: 1fr;
   }

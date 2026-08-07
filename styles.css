@@ -248,6 +248,10 @@ button {
   color: var(--danger);
 }
 
+.icon-button.warning {
+  color: #7a4e07;
+}
+
 .content {
   min-width: 0;
   padding: 26px;
@@ -598,6 +602,7 @@ tr:last-child td {
 
 .row-actions {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
 }

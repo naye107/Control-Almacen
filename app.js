@@ -507,6 +507,7 @@ function matchesSearch(values) {
 
 function statusBadge(product, stats) {
   if (!product.active) return `<span class="badge muted">Inactivo</span>`;
+  if (product.expired) return `<span class="badge danger">Vencido</span>`;
   if (stats.stock < 0) return `<span class="badge danger">Negativo</span>`;
   if (stats.low) return `<span class="badge warning">Bajo minimo</span>`;
   return `<span class="badge">Disponible</span>`;
@@ -1272,6 +1273,8 @@ function renderProducts() {
     const stats = getProductStats(product);
     const toggleLabel = product.active === false ? "Activar" : "Desactivar";
     const toggleTitle = product.active === false ? "Activar producto" : "Desactivar producto";
+    const expiredLabel = product.expired ? "Vigente" : "Vencido";
+    const expiredTitle = product.expired ? "Marcar producto como vigente" : "Marcar producto como vencido";
 
     return `
       <tr>
@@ -1287,6 +1290,7 @@ function renderProducts() {
           <div class="row-actions">
             <button class="icon-button" type="button" title="Editar producto" data-action="edit-product" data-id="${product.id}">Editar</button>
             <button class="icon-button" type="button" title="${toggleTitle}" data-action="toggle-product" data-id="${product.id}">${toggleLabel}</button>
+            <button class="icon-button warning" type="button" title="${expiredTitle}" data-action="toggle-expired" data-id="${product.id}">${expiredLabel}</button>
             <button class="icon-button danger" type="button" title="Eliminar producto" data-action="delete-product" data-id="${product.id}">Eliminar</button>
           </div>
         </td>
@@ -1466,6 +1470,7 @@ async function handleProductSubmit(event) {
       id: uid(),
       ...data,
       active: true,
+      expired: false,
       createdAt: new Date().toISOString()
     });
     showToast("Producto guardado.");
@@ -1652,6 +1657,16 @@ async function toggleProduct(productId) {
   showToast(product.active ? "Producto activado." : "Producto desactivado.");
 }
 
+async function toggleExpiredProduct(productId) {
+  const product = getProduct(productId);
+  if (!product) return;
+
+  product.expired = !product.expired;
+  if (!(await saveState())) return;
+  renderAll();
+  showToast(product.expired ? "Producto marcado como vencido." : "Producto marcado como vigente.");
+}
+
 async function deleteProduct(productId) {
   const product = getProduct(productId);
   if (!product) return;
@@ -1753,7 +1768,7 @@ function exportCsv() {
       stats.stock,
       formatTotalQuantity(product),
       product.minStock,
-      product.active === false ? "Inactivo" : stats.low ? "Bajo minimo" : "Disponible"
+      product.active === false ? "Inactivo" : product.expired ? "Vencido" : stats.low ? "Bajo minimo" : "Disponible"
     ]);
   });
 
@@ -1778,6 +1793,7 @@ function handleTableAction(event) {
   const { action, id } = button.dataset;
   if (action === "edit-product") editProduct(id);
   if (action === "toggle-product") toggleProduct(id);
+  if (action === "toggle-expired") toggleExpiredProduct(id);
   if (action === "delete-product") deleteProduct(id);
   if (action === "delete-purchase") deletePurchase(id);
   if (action === "delete-output") deleteOutput(id);

@@ -1452,9 +1452,52 @@ function renderStock() {
       && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product), product.unit]);
   });
 
-  elements.stockTable.innerHTML = products.map((product) => {
+  const categoryPriority = (category) => {
+    const value = normalize(category);
+    if (value === "fertilizante") return 0;
+    return value.includes("fertiliz") ? 1 : 2;
+  };
+  const sortedProducts = [...products].sort((left, right) => {
+    const leftCategory = left.category || "Sin categoria";
+    const rightCategory = right.category || "Sin categoria";
+    const prioritySort = categoryPriority(leftCategory) - categoryPriority(rightCategory);
+    if (prioritySort) return prioritySort;
+
+    const categorySort = String(leftCategory).localeCompare(String(rightCategory), "es", {
+      numeric: true,
+      sensitivity: "base"
+    });
+    if (categorySort) return categorySort;
+
+    const nameSort = String(left.name || "").localeCompare(String(right.name || ""), "es", {
+      numeric: true,
+      sensitivity: "base"
+    });
+    if (nameSort) return nameSort;
+
+    return presentationSummary(left).localeCompare(presentationSummary(right), "es", {
+      numeric: true,
+      sensitivity: "base"
+    });
+  });
+
+  let currentCategory = "";
+  const stockRows = [];
+  sortedProducts.forEach((product) => {
+    const category = String(product.category || "Sin categoria").trim() || "Sin categoria";
+    const categoryKey = normalize(category);
     const stats = getProductStats(product);
-    return `
+
+    if (categoryKey !== currentCategory) {
+      currentCategory = categoryKey;
+      stockRows.push(`
+        <tr class="category-group-row">
+          <td colspan="10">${escapeHtml(category)}</td>
+        </tr>
+      `);
+    }
+
+    stockRows.push(`
       <tr>
         <td>${productCell(product)}</td>
         <td>${escapeHtml(product.activeIngredient || "-")}</td>
@@ -1467,8 +1510,10 @@ function renderStock() {
         <td>${escapeHtml(formatTotalQuantity(product))}</td>
         <td>${statusBadge(product, stats)}</td>
       </tr>
-    `;
-  }).join("") || emptyRow(10, "No hay existencias para mostrar.");
+    `);
+  });
+
+  elements.stockTable.innerHTML = stockRows.join("") || emptyRow(10, "No hay existencias para mostrar.");
 
   const movements = getMovements().filter((movement) => {
     const product = getProduct(movement.productId);

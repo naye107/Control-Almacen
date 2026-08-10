@@ -627,6 +627,17 @@ tr:last-child td {
   border-bottom: 0;
 }
 
+.category-group-row td {
+  padding: 9px 12px;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .actions-cell {
   width: 380px;
   text-align: right;

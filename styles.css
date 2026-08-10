@@ -441,15 +441,21 @@ select:focus {
   align-self: end;
 }
 
+.purchase-form,
 .output-form {
   display: grid;
   gap: 14px;
+}
+
+.purchase-common-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .output-common-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.bulk-purchase,
 .bulk-output {
   display: grid;
   gap: 10px;
@@ -493,9 +499,35 @@ select:focus {
   font-size: 1rem;
 }
 
+.bulk-purchase-table,
 .bulk-output-table {
   min-width: 0;
   table-layout: fixed;
+}
+
+.bulk-purchase-table th:nth-child(1),
+.bulk-purchase-table td:nth-child(1) {
+  width: 32%;
+}
+
+.bulk-purchase-table th:nth-child(2),
+.bulk-purchase-table td:nth-child(2) {
+  width: 22%;
+}
+
+.bulk-purchase-table th:nth-child(3),
+.bulk-purchase-table td:nth-child(3) {
+  width: 14%;
+}
+
+.bulk-purchase-table th:nth-child(4),
+.bulk-purchase-table td:nth-child(4) {
+  width: 18%;
+}
+
+.bulk-purchase-table th:nth-child(5),
+.bulk-purchase-table td:nth-child(5) {
+  width: 14%;
 }
 
 .bulk-output-table th:nth-child(1),
@@ -548,6 +580,7 @@ select:focus {
   font-size: 0.8rem;
 }
 
+.bulk-purchase-table .actions-cell,
 .bulk-output-table .actions-cell {
   width: auto;
 }

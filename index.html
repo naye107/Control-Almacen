@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260807-2">
+    <link rel="stylesheet" href="styles.css?v=20260810-1">
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -216,36 +216,46 @@
             <div class="section-heading">
               <h2>Nueva compra</h2>
             </div>
-            <form id="purchase-form" class="form-grid">
-              <label>
-                Producto
-                <select id="purchase-product" required></select>
-              </label>
-              <label>
-                Presentacion
-                <input id="purchase-presentation" required autocomplete="off" placeholder="Bidon 10 L">
-              </label>
-              <label>
-                Fecha
-                <input id="purchase-date" type="date" required>
-              </label>
-              <label>
-                Proveedor
-                <input id="purchase-supplier" required autocomplete="off" placeholder="Proveedor">
-              </label>
-              <label>
-                Cantidad
-                <input id="purchase-quantity" type="number" min="0.01" step="0.01" required>
-              </label>
-              <label>
-                Lote
-                <input id="purchase-lot" autocomplete="off" placeholder="Lote">
-              </label>
-              <label>
-                Documento
-                <input id="purchase-doc" autocomplete="off" placeholder="Factura, guia">
-              </label>
-              <button class="primary-button form-action" type="submit">Registrar compra</button>
+            <form id="purchase-form" class="purchase-form">
+              <div class="form-grid purchase-common-grid">
+                <label>
+                  Fecha
+                  <input id="purchase-date" type="date" required>
+                </label>
+                <label>
+                  Proveedor
+                  <input id="purchase-supplier" required autocomplete="off" placeholder="Proveedor">
+                </label>
+                <label>
+                  Documento
+                  <input id="purchase-doc" autocomplete="off" placeholder="Factura, guia">
+                </label>
+              </div>
+
+              <div class="bulk-purchase">
+                <div class="section-heading bulk-heading">
+                  <h3>Productos</h3>
+                  <button class="ghost-button" type="button" id="add-purchase-line">Agregar producto</button>
+                </div>
+                <div class="table-wrap">
+                  <table class="bulk-purchase-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Presentacion</th>
+                        <th>Cantidad</th>
+                        <th>Lote</th>
+                        <th class="actions-cell">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="purchase-lines"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="form-actions-row">
+                <button class="primary-button" type="submit">Registrar compras</button>
+              </div>
             </form>
           </section>
 
@@ -471,6 +481,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260807-2" defer></script>
+    <script src="app.js?v=20260810-1" defer></script>
   </body>
 </html>

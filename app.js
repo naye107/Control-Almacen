@@ -44,6 +44,8 @@ const elements = {
   categoryOptions: document.querySelector("#category-options"),
   purchasesTable: document.querySelector("#purchases-table"),
   purchaseCount: document.querySelector("#purchase-count"),
+  purchaseLines: document.querySelector("#purchase-lines"),
+  addPurchaseLine: document.querySelector("#add-purchase-line"),
   outputsTable: document.querySelector("#outputs-table"),
   outputCount: document.querySelector("#output-count"),
   outputLines: document.querySelector("#output-lines"),
@@ -61,8 +63,6 @@ const elements = {
   stockTable: document.querySelector("#stock-table"),
   kardexTable: document.querySelector("#kardex-table"),
   kardexCount: document.querySelector("#kardex-count"),
-  purchaseProduct: document.querySelector("#purchase-product"),
-  purchasePresentation: document.querySelector("#purchase-presentation"),
   availableStock: document.querySelector("#available-stock"),
   cancelProductEdit: document.querySelector("#cancel-product-edit"),
   logoutButton: document.querySelector("#logout-button")
@@ -852,15 +852,10 @@ function getProductOptionsHtml(selectedId = "") {
 }
 
 function renderProductOptions() {
-  const activeProducts = getActiveProducts();
-  const options = getProductOptionsHtml(elements.purchaseProduct.value);
-
-  const fallback = `<option value="" disabled selected>Registre un producto</option>`;
-  elements.purchaseProduct.innerHTML = options || fallback;
-  elements.purchaseProduct.disabled = activeProducts.length === 0;
+  syncPurchaseLineProductOptions();
+  ensurePurchaseLine();
   syncOutputLineProductOptions();
   ensureOutputLine();
-  updatePurchasePresentation();
 }
 
 function renderCategoryOptions() {
@@ -903,6 +898,90 @@ function renderStockFilterOptions() {
     uniqueSortedValues(state.products.map((product) => product.activeIngredient)),
     "Todas"
   );
+}
+
+function getPurchaseLineRows() {
+  return [...elements.purchaseLines.querySelectorAll("[data-purchase-line]")];
+}
+
+function fillPurchaseLineProductOptions(row, selectedId = "") {
+  const select = row.querySelector(".purchase-line-product");
+  const current = selectedId || select.value || getActiveProducts()[0]?.id || "";
+  const options = getProductOptionsHtml(current);
+
+  select.innerHTML = options || `<option value="" disabled selected>Registre un producto</option>`;
+  select.disabled = !options;
+  if (current && getProduct(current)) select.value = current;
+}
+
+function updatePurchaseLinePresentation(row) {
+  const product = getProduct(row.querySelector(".purchase-line-product").value);
+  row.querySelector(".purchase-line-presentation").value = product?.presentation || "";
+}
+
+function addPurchaseLine(item = {}) {
+  const row = document.createElement("tr");
+  row.dataset.purchaseLine = "true";
+  row.innerHTML = `
+    <td>
+      <select class="purchase-line-product"></select>
+    </td>
+    <td>
+      <input class="purchase-line-presentation" autocomplete="off" placeholder="Saco 25 kg">
+    </td>
+    <td>
+      <input class="purchase-line-quantity" type="number" min="0.01" step="0.01">
+    </td>
+    <td>
+      <input class="purchase-line-lot" autocomplete="off" placeholder="Lote">
+    </td>
+    <td class="actions-cell">
+      <button class="icon-button danger" type="button" title="Quitar producto" data-purchase-action="remove-line">Quitar</button>
+    </td>
+  `;
+
+  elements.purchaseLines.append(row);
+  fillPurchaseLineProductOptions(row, item.productId);
+  if (item.presentation) {
+    row.querySelector(".purchase-line-presentation").value = item.presentation;
+  } else {
+    updatePurchaseLinePresentation(row);
+  }
+  if (item.quantity !== undefined && item.quantity !== null && item.quantity !== "") {
+    row.querySelector(".purchase-line-quantity").value = item.quantity;
+  }
+  if (item.lot) {
+    row.querySelector(".purchase-line-lot").value = item.lot;
+  }
+  return row;
+}
+
+function ensurePurchaseLine() {
+  if (getPurchaseLineRows().length === 0) addPurchaseLine();
+}
+
+function resetPurchaseLines() {
+  elements.purchaseLines.innerHTML = "";
+  addPurchaseLine();
+}
+
+function syncPurchaseLineProductOptions() {
+  getPurchaseLineRows().forEach((row) => {
+    fillPurchaseLineProductOptions(row);
+  });
+}
+
+function readPurchaseLine(row) {
+  const quantityInput = row.querySelector(".purchase-line-quantity").value.trim();
+  return {
+    row,
+    productId: row.querySelector(".purchase-line-product").value,
+    product: getProduct(row.querySelector(".purchase-line-product").value),
+    presentation: row.querySelector(".purchase-line-presentation").value.trim(),
+    quantityInput,
+    quantity: toNumber(quantityInput),
+    lot: row.querySelector(".purchase-line-lot").value.trim()
+  };
 }
 
 function getOutputLineRows() {
@@ -1489,28 +1568,66 @@ async function handlePurchaseSubmit(event) {
     return;
   }
 
-  const purchase = {
-    id: uid(),
-    productId: elements.purchaseProduct.value,
-    date: document.querySelector("#purchase-date").value,
-    presentation: elements.purchasePresentation.value.trim(),
-    supplier: document.querySelector("#purchase-supplier").value.trim(),
-    quantity: toNumber(document.querySelector("#purchase-quantity").value),
-    lot: document.querySelector("#purchase-lot").value.trim(),
-    doc: document.querySelector("#purchase-doc").value.trim()
-  };
+  const date = document.querySelector("#purchase-date").value;
+  const supplier = document.querySelector("#purchase-supplier").value.trim();
+  const doc = document.querySelector("#purchase-doc").value.trim();
 
-  if (!purchase.productId || !purchase.presentation || !purchase.supplier || purchase.quantity <= 0) {
-    showToast("Complete la compra con una cantidad valida.");
+  if (!date) {
+    showToast("Indique la fecha de la compra.");
     return;
   }
 
-  state.purchases.push(purchase);
+  if (!supplier) {
+    showToast("Indique el proveedor de la compra.");
+    return;
+  }
+
+  const filledLines = getPurchaseLineRows()
+    .map(readPurchaseLine)
+    .filter((line) => line.quantityInput);
+
+  if (filledLines.length === 0) {
+    showToast("Agregue al menos un producto con cantidad.");
+    return;
+  }
+
+  const purchases = [];
+
+  for (const line of filledLines) {
+    if (!line.product) {
+      showToast("Seleccione un producto en todas las filas.");
+      return;
+    }
+
+    if (!line.presentation) {
+      showToast(`Indique la presentacion de ${line.product.name}.`);
+      return;
+    }
+
+    if (line.quantity <= 0) {
+      showToast(`Ingrese una cantidad valida para ${line.product.name}.`);
+      return;
+    }
+
+    purchases.push({
+      id: uid(),
+      productId: line.product.id,
+      date,
+      presentation: line.presentation,
+      supplier,
+      quantity: line.quantity,
+      lot: line.lot,
+      doc
+    });
+  }
+
+  state.purchases.push(...purchases);
   if (!(await saveState())) return;
   purchaseForm.reset();
   setFormDefaults();
+  resetPurchaseLines();
   renderAll();
-  showToast("Compra registrada.");
+  showToast(`${purchases.length} compra${purchases.length === 1 ? "" : "s"} registrada${purchases.length === 1 ? "" : "s"}.`);
 }
 
 async function handleOutputSubmit(event) {
@@ -1744,11 +1861,6 @@ function printView(viewName) {
   window.print();
 }
 
-function updatePurchasePresentation() {
-  const product = getProduct(elements.purchaseProduct.value);
-  elements.purchasePresentation.value = product?.presentation || "";
-}
-
 function exportCsv() {
   const rows = [
     ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Cantidad", "Stock minimo", "Estado"]
@@ -1822,7 +1934,28 @@ function bindEvents() {
   elements.onlyLowStock.addEventListener("change", renderStock);
   elements.stockCategoryFilter.addEventListener("change", renderStock);
   elements.stockActiveFilter.addEventListener("change", renderStock);
-  elements.purchaseProduct.addEventListener("change", updatePurchasePresentation);
+  elements.addPurchaseLine.addEventListener("click", () => addPurchaseLine());
+  elements.purchaseLines.addEventListener("change", (event) => {
+    const row = event.target.closest("[data-purchase-line]");
+    if (!row) return;
+
+    if (event.target.matches(".purchase-line-product")) {
+      updatePurchaseLinePresentation(row);
+    }
+  });
+  elements.purchaseLines.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-purchase-action='remove-line']");
+    if (!button) return;
+
+    const row = button.closest("[data-purchase-line]");
+    if (getPurchaseLineRows().length > 1) {
+      row.remove();
+    } else {
+      row.querySelector(".purchase-line-quantity").value = "";
+      row.querySelector(".purchase-line-lot").value = "";
+      updatePurchaseLinePresentation(row);
+    }
+  });
   elements.outputReason.addEventListener("change", () => {
     if (elements.outputReason.value === "Aplicacion") {
       elements.outputQuantityMode.value = "dose";

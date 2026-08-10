@@ -1813,10 +1813,23 @@ async function deletePurchase(purchaseId) {
   const product = getProduct(purchase.productId);
   if (product) {
     const presentation = purchase.presentation || product.presentation;
-    const stock = getPresentationStock(product, presentation);
-    if (stock - toNumber(purchase.quantity) < 0) {
-      showToast(`No se puede eliminar: dejaria stock negativo para ${presentation}.`);
-      return;
+    const info = getPresentationInfo(presentation);
+    const quantity = toNumber(purchase.quantity);
+
+    if (info.baseValue !== null) {
+      const stock = getCompatiblePhysicalStock(product, info.group);
+      const deletedBaseQuantity = quantity * info.baseValue;
+
+      if (stock - deletedBaseQuantity < -0.000001) {
+        showToast(`No se puede eliminar: dejaria stock negativo. Disponible: ${formatPhysicalTotal(info.group, stock, info.unit)}.`);
+        return;
+      }
+    } else {
+      const stock = getPresentationStock(product, presentation);
+      if (stock - quantity < 0) {
+        showToast(`No se puede eliminar: dejaria stock negativo para ${presentation}.`);
+        return;
+      }
     }
   }
 

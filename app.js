@@ -1821,14 +1821,14 @@ async function deletePurchase(purchaseId) {
       const deletedBaseQuantity = quantity * info.baseValue;
 
       if (stock - deletedBaseQuantity < -0.000001) {
-        showToast(`No se puede eliminar: dejaria stock negativo. Disponible: ${formatPhysicalTotal(info.group, stock, info.unit)}.`);
-        return;
+        const shouldDelete = confirm(`Segun el calculo, esta compra dejaria stock negativo. Disponible: ${formatPhysicalTotal(info.group, stock, info.unit)}. Eliminar de todos modos?`);
+        if (!shouldDelete) return;
       }
     } else {
       const stock = getPresentationStock(product, presentation);
       if (stock - quantity < 0) {
-        showToast(`No se puede eliminar: dejaria stock negativo para ${presentation}.`);
-        return;
+        const shouldDelete = confirm(`Segun el calculo, esta compra dejaria stock negativo para ${presentation}. Eliminar de todos modos?`);
+        if (!shouldDelete) return;
       }
     }
   }

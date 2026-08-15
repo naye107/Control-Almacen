@@ -18,6 +18,8 @@ const SESSION_COOKIE = "japurima_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 const sessions = new Map();
 let pgPool = null;
+let stateCache = null;
+let stateRevision = "";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -61,6 +63,12 @@ function normalizeState(value) {
     purchases: Array.isArray(value?.purchases) ? value.purchases : [],
     outputs: Array.isArray(value?.outputs) ? value.outputs : []
   };
+}
+
+function updateStateCache(nextState, revision = "") {
+  stateCache = normalizeState(nextState);
+  stateRevision = revision || new Date().toISOString();
+  return stateCache;
 }
 
 function shouldUseDatabaseSsl() {
@@ -136,13 +144,22 @@ function writeStateFile(nextState) {
 }
 
 async function readState() {
+  if (stateCache) return stateCache;
+
   if (DATABASE_URL) {
     const pool = getPgPool();
-    const result = await pool.query("SELECT data FROM inventory_state WHERE id = 1");
-    return normalizeState(result.rows[0]?.data || defaultState());
+    const result = await pool.query("SELECT data, updated_at FROM inventory_state WHERE id = 1");
+    const row = result.rows[0] || {};
+    const revision = row.updated_at ? new Date(row.updated_at).toISOString() : "";
+    return updateStateCache(row.data || defaultState(), revision);
   }
 
-  return readStateFile();
+  return updateStateCache(readStateFile());
+}
+
+async function readStateMeta() {
+  if (!stateCache) await readState();
+  return { revision: stateRevision };
 }
 
 async function writeState(nextState) {
@@ -150,16 +167,20 @@ async function writeState(nextState) {
 
   if (DATABASE_URL) {
     const pool = getPgPool();
-    await pool.query(`
+    const result = await pool.query(`
       INSERT INTO inventory_state (id, data, updated_at)
       VALUES (1, $1::jsonb, now())
       ON CONFLICT (id)
       DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+      RETURNING updated_at
     `, [JSON.stringify(normalized)]);
+    const revision = result.rows[0]?.updated_at ? new Date(result.rows[0].updated_at).toISOString() : "";
+    updateStateCache(normalized, revision);
     return;
   }
 
   writeStateFile(normalized);
+  updateStateCache(normalized);
 }
 
 function sendJson(response, statusCode, payload, extraHeaders = {}) {
@@ -319,7 +340,13 @@ async function handleApi(request, response) {
   }
 
   if (request.method === "GET" && request.url === "/api/state") {
-    sendJson(response, 200, await readState());
+    const currentState = await readState();
+    sendJson(response, 200, currentState, { "X-State-Revision": stateRevision });
+    return true;
+  }
+
+  if (request.method === "GET" && request.url === "/api/state-meta") {
+    sendJson(response, 200, await readStateMeta());
     return true;
   }
 
@@ -327,7 +354,7 @@ async function handleApi(request, response) {
     try {
       const payload = await readJsonBody(request);
       await writeState(payload);
-      sendJson(response, 200, { ok: true });
+      sendJson(response, 200, { ok: true, revision: stateRevision });
     } catch (error) {
       const statusCode = error.message === "BODY_TOO_LARGE" ? 413 : 400;
       sendJson(response, statusCode, { ok: false, error: error.message });

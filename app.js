@@ -6,6 +6,7 @@ let appEventsBound = false;
 let syncTimer = null;
 let isSyncing = false;
 let lastServerSnapshot = "";
+let lastServerRevision = "";
 let outputTemplates = [];
 
 const state = {
@@ -223,6 +224,7 @@ async function loadState() {
 
       const serverState = normalizeState(await response.json());
       backendAvailable = true;
+      lastServerRevision = response.headers.get("X-State-Revision") || "";
       lastServerSnapshot = JSON.stringify(serverState);
       setState(serverState);
       return true;
@@ -264,6 +266,8 @@ function saveState() {
         return false;
       }
       if (!response.ok) throw new Error("No se pudo guardar.");
+      const payload = await response.json().catch(() => ({}));
+      lastServerRevision = payload.revision || lastServerRevision;
       lastServerSnapshot = snapshot;
       return true;
     })
@@ -286,6 +290,22 @@ async function refreshStateFromServer() {
 
   isSyncing = true;
   try {
+    const metaResponse = await fetch("/api/state-meta", {
+      cache: "no-store",
+      credentials: "same-origin"
+    });
+
+    if (metaResponse.status === 401) {
+      stopAutoSync();
+      showLogin("Sesion vencida. Ingrese nuevamente.");
+      return;
+    }
+
+    if (!metaResponse.ok) throw new Error("No se pudo sincronizar.");
+
+    const meta = await metaResponse.json().catch(() => ({}));
+    if (meta.revision && meta.revision === lastServerRevision) return;
+
     const response = await fetch("/api/state", {
       cache: "no-store",
       credentials: "same-origin"
@@ -301,6 +321,7 @@ async function refreshStateFromServer() {
 
     const serverState = normalizeState(await response.json());
     const snapshot = JSON.stringify(serverState);
+    lastServerRevision = response.headers.get("X-State-Revision") || meta.revision || lastServerRevision;
     if (snapshot !== lastServerSnapshot) {
       lastServerSnapshot = snapshot;
       setState(serverState);
@@ -316,7 +337,7 @@ async function refreshStateFromServer() {
 
 function startAutoSync() {
   if (!isServerMode() || syncTimer) return;
-  syncTimer = window.setInterval(refreshStateFromServer, 8000);
+  syncTimer = window.setInterval(refreshStateFromServer, 60000);
 }
 
 function stopAutoSync() {

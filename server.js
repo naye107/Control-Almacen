@@ -76,7 +76,9 @@ function getPgPool() {
   const { Pool } = require("pg");
   pgPool = new Pool({
     connectionString: DATABASE_URL,
-    ssl: shouldUseDatabaseSsl() ? { rejectUnauthorized: false } : false
+    ssl: shouldUseDatabaseSsl() ? { rejectUnauthorized: false } : false,
+    enableChannelBinding: /channel_binding=require/i.test(DATABASE_URL),
+    connectionTimeoutMillis: 10000
   });
 
   return pgPool;

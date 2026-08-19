@@ -2055,12 +2055,12 @@ function exportStockExcel() {
       product.activeIngredient || "",
       product.category || "",
       presentationSummary(product),
-      stats.opening,
-      stats.purchased,
-      stats.output,
-      stats.stock,
+      formatNumber.format(stats.opening),
+      formatNumber.format(stats.purchased),
+      formatNumber.format(stats.output),
+      formatNumber.format(stats.stock),
       formatTotalQuantity(product, { dateRange }),
-      product.minStock,
+      formatNumber.format(product.minStock),
       statusText(product, stats)
     ]);
   });
@@ -2074,7 +2074,7 @@ function exportStockExcel() {
   <meta charset="utf-8">
   <style>
     table { border-collapse: collapse; font-family: Arial, sans-serif; }
-    td { border: 1px solid #d9e0d8; padding: 6px 8px; }
+    td { border: 1px solid #d9e0d8; padding: 6px 8px; mso-number-format:"\\@"; }
     tr:nth-child(1) td, tr:nth-child(4) td { font-weight: 700; background: #edf4ef; }
   </style>
 </head>

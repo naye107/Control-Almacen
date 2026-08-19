@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>JAPURIMA | Control de almacen</title>
-    <link rel="stylesheet" href="styles.css?v=20260810-4">
+    <link rel="stylesheet" href="styles.css?v=20260819-1">
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -425,10 +425,19 @@
                   <option value="">Todas</option>
                 </select>
               </label>
+              <label class="toolbar-field compact-field">
+                Desde
+                <input id="stock-date-from" type="date">
+              </label>
+              <label class="toolbar-field compact-field">
+                Hasta
+                <input id="stock-date-to" type="date">
+              </label>
               <label class="check-line">
                 <input id="only-low-stock" type="checkbox">
                 Bajo minimo
               </label>
+              <button class="ghost-button" type="button" id="export-stock-excel">Exportar Excel</button>
               <button class="ghost-button" type="button" id="print-stock">Imprimir</button>
             </div>
           </section>
@@ -481,6 +490,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260810-4" defer></script>
+    <script src="app.js?v=20260819-1" defer></script>
   </body>
 </html>

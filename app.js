@@ -31,6 +31,9 @@ const elements = {
   onlyLowStock: document.querySelector("#only-low-stock"),
   stockCategoryFilter: document.querySelector("#stock-category-filter"),
   stockActiveFilter: document.querySelector("#stock-active-filter"),
+  stockDateFrom: document.querySelector("#stock-date-from"),
+  stockDateTo: document.querySelector("#stock-date-to"),
+  exportStockExcel: document.querySelector("#export-stock-excel"),
   toast: document.querySelector("#toast"),
   metricProducts: document.querySelector("#metric-products"),
   metricStock: document.querySelector("#metric-stock"),
@@ -422,8 +425,9 @@ function getPresentationInfo(presentation) {
   };
 }
 
-function getPresentationBreakdown(product, extraOutputs = []) {
+function getPresentationBreakdown(product, extraOutputs = [], options = {}) {
   const buckets = new Map();
+  const dateRange = options.dateRange || {};
 
   function ensureBucket(presentation) {
     const label = String(presentation || product.presentation || "Sin presentacion").trim();
@@ -447,12 +451,24 @@ function getPresentationBreakdown(product, extraOutputs = []) {
   ensureBucket(product.presentation).opening += toNumber(product.openingStock);
 
   getPurchases(product.id).forEach((purchase) => {
-    ensureBucket(purchase.presentation || product.presentation).purchased += toNumber(purchase.quantity);
+    const bucket = ensureBucket(purchase.presentation || product.presentation);
+    const quantity = toNumber(purchase.quantity);
+    if (isBeforeDateRange(purchase.date, dateRange)) {
+      bucket.opening += quantity;
+    } else if (isDateInRange(purchase.date, dateRange)) {
+      bucket.purchased += quantity;
+    }
   });
 
   [...getOutputs(product.id), ...extraOutputs.filter((output) => output.productId === product.id)].forEach((output) => {
     getOutputAllocations(output, product).forEach((allocation) => {
-      ensureBucket(allocation.presentation || product.presentation).output += toNumber(allocation.quantity);
+      const bucket = ensureBucket(allocation.presentation || product.presentation);
+      const quantity = toNumber(allocation.quantity);
+      if (isBeforeDateRange(output.date, dateRange)) {
+        bucket.opening -= quantity;
+      } else if (isDateInRange(output.date, dateRange)) {
+        bucket.output += quantity;
+      }
     });
   });
 
@@ -464,13 +480,15 @@ function getPresentationBreakdown(product, extraOutputs = []) {
     .sort((left, right) => left.label.localeCompare(right.label, "es"));
 }
 
-function getProductStats(product) {
-  const breakdown = getPresentationBreakdown(product);
+function getProductStats(product, options = {}) {
+  const breakdown = getPresentationBreakdown(product, [], options);
+  const opening = breakdown.reduce((sum, item) => sum + item.opening, 0);
   const purchased = breakdown.reduce((sum, item) => sum + item.purchased, 0);
   const output = breakdown.reduce((sum, item) => sum + item.output, 0);
   const stock = breakdown.reduce((sum, item) => sum + item.stock, 0);
 
   return {
+    opening,
     purchased,
     output,
     stock,
@@ -526,12 +544,39 @@ function matchesSearch(values) {
   return values.some((value) => normalize(value).includes(query));
 }
 
+function getStockDateRange() {
+  const from = elements.stockDateFrom?.value || "";
+  const to = elements.stockDateTo?.value || "";
+  if (from && to && from > to) {
+    return { from: to, to: from };
+  }
+  return { from, to };
+}
+
+function isBeforeDateRange(date, dateRange = {}) {
+  const value = String(date || "");
+  return Boolean(dateRange.from && value && value < dateRange.from);
+}
+
+function isDateInRange(date, dateRange = {}) {
+  const value = String(date || "");
+  if (dateRange.from && (!value || value < dateRange.from)) return false;
+  if (dateRange.to && (!value || value > dateRange.to)) return false;
+  return true;
+}
+
+function statusText(product, stats) {
+  if (!product.active) return "Inactivo";
+  if (product.expired) return "Vencido";
+  if (stats.stock < 0) return "Negativo";
+  if (stats.low) return "Bajo minimo";
+  return "Disponible";
+}
+
 function statusBadge(product, stats) {
-  if (!product.active) return `<span class="badge muted">Inactivo</span>`;
-  if (product.expired) return `<span class="badge danger">Vencido</span>`;
-  if (stats.stock < 0) return `<span class="badge danger">Negativo</span>`;
-  if (stats.low) return `<span class="badge warning">Bajo minimo</span>`;
-  return `<span class="badge">Disponible</span>`;
+  const text = statusText(product, stats);
+  const className = text === "Inactivo" ? "muted" : text === "Vencido" || text === "Negativo" ? "danger" : text === "Bajo minimo" ? "warning" : "";
+  return `<span class="badge ${className}">${text}</span>`;
 }
 
 function parsePresentationQuantity(presentation) {
@@ -598,9 +643,9 @@ function formatPhysicalTotal(group, value, unit = "unidades") {
   return "-";
 }
 
-function formatTotalQuantity(product) {
+function formatTotalQuantity(product, options = {}) {
   const totals = new Map();
-  const breakdown = getPresentationBreakdown(product);
+  const breakdown = getPresentationBreakdown(product, [], options);
 
   if (breakdown.some((item) => item.stock !== 0 && item.info.baseValue === null)) {
     return "-";
@@ -1456,58 +1501,69 @@ function renderOutputs() {
     }).join("") || emptyRow(8, "No hay salidas registradas.");
 }
 
-function renderStock() {
+function categoryPriority(category) {
+  const value = normalize(category);
+  if (value === "fertilizante") return 0;
+  return value.includes("fertiliz") ? 1 : 2;
+}
+
+function getStockFilterContext() {
   const onlyLow = elements.onlyLowStock.checked;
   const selectedCategory = normalize(elements.stockCategoryFilter.value);
   const selectedActive = normalize(elements.stockActiveFilter.value);
+  const dateRange = getStockDateRange();
   const matchesStockFilters = (product) => {
     if (!product) return !selectedCategory && !selectedActive;
     const matchesCategory = !selectedCategory || normalize(product.category) === selectedCategory;
     const matchesActive = !selectedActive || normalize(product.activeIngredient) === selectedActive;
     return matchesCategory && matchesActive;
   };
-  const products = state.products.filter((product) => {
-    const stats = getProductStats(product);
-    return matchesStockFilters(product)
-      && (!onlyLow || stats.low)
-      && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product), product.unit]);
-  });
 
-  const categoryPriority = (category) => {
-    const value = normalize(category);
-    if (value === "fertilizante") return 0;
-    return value.includes("fertiliz") ? 1 : 2;
-  };
-  const sortedProducts = [...products].sort((left, right) => {
-    const leftCategory = left.category || "Sin categoria";
-    const rightCategory = right.category || "Sin categoria";
-    const prioritySort = categoryPriority(leftCategory) - categoryPriority(rightCategory);
-    if (prioritySort) return prioritySort;
+  const rows = state.products
+    .map((product) => ({
+      product,
+      stats: getProductStats(product, { dateRange })
+    }))
+    .filter(({ product, stats }) => {
+      return matchesStockFilters(product)
+        && (!onlyLow || stats.low)
+        && matchesSearch([product.name, product.activeIngredient, product.category, product.presentation, presentationSummary(product), product.unit]);
+    })
+    .sort(({ product: left }, { product: right }) => {
+      const leftCategory = left.category || "Sin categoria";
+      const rightCategory = right.category || "Sin categoria";
+      const prioritySort = categoryPriority(leftCategory) - categoryPriority(rightCategory);
+      if (prioritySort) return prioritySort;
 
-    const categorySort = String(leftCategory).localeCompare(String(rightCategory), "es", {
-      numeric: true,
-      sensitivity: "base"
+      const categorySort = String(leftCategory).localeCompare(String(rightCategory), "es", {
+        numeric: true,
+        sensitivity: "base"
+      });
+      if (categorySort) return categorySort;
+
+      const nameSort = String(left.name || "").localeCompare(String(right.name || ""), "es", {
+        numeric: true,
+        sensitivity: "base"
+      });
+      if (nameSort) return nameSort;
+
+      return presentationSummary(left).localeCompare(presentationSummary(right), "es", {
+        numeric: true,
+        sensitivity: "base"
+      });
     });
-    if (categorySort) return categorySort;
 
-    const nameSort = String(left.name || "").localeCompare(String(right.name || ""), "es", {
-      numeric: true,
-      sensitivity: "base"
-    });
-    if (nameSort) return nameSort;
+  return { rows, dateRange, matchesStockFilters };
+}
 
-    return presentationSummary(left).localeCompare(presentationSummary(right), "es", {
-      numeric: true,
-      sensitivity: "base"
-    });
-  });
-
+function renderStock() {
+  const { rows, dateRange, matchesStockFilters } = getStockFilterContext();
   let currentCategory = "";
   const stockRows = [];
-  sortedProducts.forEach((product) => {
+
+  rows.forEach(({ product, stats }) => {
     const category = String(product.category || "Sin categoria").trim() || "Sin categoria";
     const categoryKey = normalize(category);
-    const stats = getProductStats(product);
 
     if (categoryKey !== currentCategory) {
       currentCategory = categoryKey;
@@ -1524,11 +1580,11 @@ function renderStock() {
         <td>${escapeHtml(product.activeIngredient || "-")}</td>
         <td>${escapeHtml(product.category)}</td>
         <td>${escapeHtml(presentationSummary(product))}</td>
-        <td>${formatNumber.format(product.openingStock)}</td>
+        <td>${formatNumber.format(stats.opening)}</td>
         <td>${formatNumber.format(stats.purchased)}</td>
         <td>${formatNumber.format(stats.output)}</td>
         <td><strong>${formatNumber.format(stats.stock)}</strong></td>
-        <td>${escapeHtml(formatTotalQuantity(product))}</td>
+        <td>${escapeHtml(formatTotalQuantity(product, { dateRange }))}</td>
         <td>${statusBadge(product, stats)}</td>
       </tr>
     `);
@@ -1538,7 +1594,9 @@ function renderStock() {
 
   const movements = getMovements().filter((movement) => {
     const product = getProduct(movement.productId);
-    return matchesStockFilters(product) && matchesSearch([product?.name, movement.type, movement.detail, movement.date]);
+    return matchesStockFilters(product)
+      && isDateInRange(movement.date, dateRange)
+      && matchesSearch([product?.name, movement.type, movement.detail, movement.date]);
   });
 
   elements.kardexCount.textContent = movements.length;
@@ -1959,7 +2017,7 @@ function exportCsv() {
       stats.stock,
       formatTotalQuantity(product),
       product.minStock,
-      product.active === false ? "Inactivo" : product.expired ? "Vencido" : stats.low ? "Bajo minimo" : "Disponible"
+      statusText(product, stats)
     ]);
   });
 
@@ -1975,6 +2033,61 @@ function exportCsv() {
   link.click();
   URL.revokeObjectURL(url);
   showToast("CSV exportado.");
+}
+
+function exportStockExcel() {
+  const { rows, dateRange } = getStockFilterContext();
+  if (!rows.length) {
+    showToast("No hay existencias para exportar.");
+    return;
+  }
+
+  const reportRows = [
+    ["Reporte de existencias"],
+    ["Desde", dateRange.from || "Inicio", "Hasta", dateRange.to || "Actual"],
+    [],
+    ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Inicial", "Compras", "Salidas", "Stock", "Cantidad", "Minimo", "Estado"]
+  ];
+
+  rows.forEach(({ product, stats }) => {
+    reportRows.push([
+      product.name,
+      product.activeIngredient || "",
+      product.category || "",
+      presentationSummary(product),
+      stats.opening,
+      stats.purchased,
+      stats.output,
+      stats.stock,
+      formatTotalQuantity(product, { dateRange }),
+      product.minStock,
+      statusText(product, stats)
+    ]);
+  });
+
+  const htmlRows = reportRows.map((row) => {
+    return `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`;
+  }).join("");
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    table { border-collapse: collapse; font-family: Arial, sans-serif; }
+    td { border: 1px solid #d9e0d8; padding: 6px 8px; }
+    tr:nth-child(1) td, tr:nth-child(4) td { font-weight: 700; background: #edf4ef; }
+  </style>
+</head>
+<body><table>${htmlRows}</table></body>
+</html>`;
+  const blob = new Blob([`\ufeff${html}`], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `existencias-${dateRange.from || "inicio"}-${dateRange.to || today()}.xls`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Excel exportado.");
 }
 
 function handleTableAction(event) {
@@ -2013,6 +2126,8 @@ function bindEvents() {
   elements.onlyLowStock.addEventListener("change", renderStock);
   elements.stockCategoryFilter.addEventListener("change", renderStock);
   elements.stockActiveFilter.addEventListener("change", renderStock);
+  elements.stockDateFrom.addEventListener("change", renderStock);
+  elements.stockDateTo.addEventListener("change", renderStock);
   elements.addPurchaseLine.addEventListener("click", () => addPurchaseLine());
   elements.purchaseLines.addEventListener("change", (event) => {
     const row = event.target.closest("[data-purchase-line]");
@@ -2097,6 +2212,7 @@ function bindEvents() {
     if (!document.hidden) refreshStateFromServer();
   });
   document.querySelector("#export-data").addEventListener("click", exportCsv);
+  elements.exportStockExcel.addEventListener("click", exportStockExcel);
   elements.logoutButton.addEventListener("click", handleLogout);
   document.querySelector("#print-purchases").addEventListener("click", () => printView("purchases"));
   document.querySelector("#print-outputs").addEventListener("click", () => printView("outputs"));

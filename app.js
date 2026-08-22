@@ -48,6 +48,7 @@ const elements = {
   categoryOptions: document.querySelector("#category-options"),
   purchasesTable: document.querySelector("#purchases-table"),
   purchaseCount: document.querySelector("#purchase-count"),
+  purchaseSupplierFilter: document.querySelector("#purchase-supplier-filter"),
   exportPurchasesExcel: document.querySelector("#export-purchases-excel"),
   purchaseLines: document.querySelector("#purchase-lines"),
   addPurchaseLine: document.querySelector("#add-purchase-line"),
@@ -1446,9 +1447,11 @@ function renderProducts() {
 }
 
 function getFilteredPurchases() {
+  const supplierQuery = normalize(elements.purchaseSupplierFilter.value);
   return state.purchases.filter((purchase) => {
     const product = getProduct(purchase.productId);
-    return matchesSearch([product?.name, purchase.presentation, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
+    const matchesSupplier = !supplierQuery || normalize(purchase.supplier).includes(supplierQuery);
+    return matchesSupplier && matchesSearch([product?.name, purchase.presentation, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
   });
 }
 
@@ -2383,6 +2386,7 @@ function bindEvents() {
   outputForm.addEventListener("submit", handleOutputSubmit);
   elements.cancelProductEdit.addEventListener("click", resetProductForm);
   elements.globalSearch.addEventListener("input", renderAll);
+  elements.purchaseSupplierFilter.addEventListener("input", renderPurchases);
   elements.onlyLowStock.addEventListener("change", renderStock);
   elements.stockCategoryFilter.addEventListener("change", renderStock);
   elements.stockActiveFilter.addEventListener("change", renderStock);

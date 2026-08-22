@@ -1473,13 +1473,12 @@ function renderPurchases() {
           <td>${escapeHtml(purchase.supplier)}</td>
           <td>${escapeHtml(purchase.doc || "-")}</td>
           <td>${formatNumber.format(purchase.quantity)}</td>
-          <td>${escapeHtml(purchase.lot || "-")}</td>
           <td class="actions-cell">
             <button class="icon-button danger" type="button" title="Eliminar compra" data-action="delete-purchase" data-id="${purchase.id}">Eliminar</button>
           </td>
         </tr>
       `;
-    }).join("") || emptyRow(8, "No hay compras registradas.");
+    }).join("") || emptyRow(7, "No hay compras registradas.");
 }
 
 function getFilteredOutputs() {

@@ -54,6 +54,7 @@ const elements = {
   addPurchaseLine: document.querySelector("#add-purchase-line"),
   outputsTable: document.querySelector("#outputs-table"),
   outputCount: document.querySelector("#output-count"),
+  exportOutputsExcel: document.querySelector("#export-outputs-excel"),
   outputLines: document.querySelector("#output-lines"),
   outputTemplate: document.querySelector("#output-template"),
   outputReason: document.querySelector("#output-reason"),
@@ -1480,11 +1481,15 @@ function renderPurchases() {
     }).join("") || emptyRow(7, "No hay compras registradas.");
 }
 
-function renderOutputs() {
-  const filtered = state.outputs.filter((output) => {
+function getFilteredOutputs() {
+  return state.outputs.filter((output) => {
     const product = getProduct(output.productId);
     return matchesSearch([product?.name, output.presentation, output.destination, output.reason, output.responsible, output.date]);
   });
+}
+
+function renderOutputs() {
+  const filtered = getFilteredOutputs();
 
   elements.outputCount.textContent = filtered.length;
   elements.outputsTable.innerHTML = filtered
@@ -2353,6 +2358,43 @@ function exportPurchasesExcel() {
   showToast("Compras exportadas a Excel.");
 }
 
+function exportOutputsExcel() {
+  const outputs = getFilteredOutputs().sort((a, b) => b.date.localeCompare(a.date));
+  if (!outputs.length) {
+    showToast("No hay salidas para exportar.");
+    return;
+  }
+
+  const reportRows = [
+    [xlsxText("Reporte de salidas", 2)],
+    [xlsxText("Generado", 2), today()],
+    [],
+    ["Fecha", "Producto", "Presentacion", "Destino", "Cantidad", "Motivo", "Responsable"].map((value) => xlsxText(value, 2))
+  ];
+
+  outputs.forEach((output) => {
+    const product = getProduct(output.productId);
+    reportRows.push([
+      output.date || "",
+      product?.name || "Producto eliminado",
+      formatOutputPresentation(output, product),
+      output.destination || "",
+      formatOutputQuantity(output, product),
+      output.reason || "",
+      output.responsible || ""
+    ]);
+  });
+
+  const blob = createXlsxBlob(reportRows, "Salidas");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `salidas-${today()}.xlsx`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Salidas exportadas a Excel.");
+}
+
 function handleTableAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -2477,6 +2519,7 @@ function bindEvents() {
   });
   document.querySelector("#export-data").addEventListener("click", exportCsv);
   elements.exportPurchasesExcel.addEventListener("click", exportPurchasesExcel);
+  elements.exportOutputsExcel.addEventListener("click", exportOutputsExcel);
   elements.exportStockExcel.addEventListener("click", exportStockExcel);
   elements.logoutButton.addEventListener("click", handleLogout);
   document.querySelector("#print-purchases").addEventListener("click", () => printView("purchases"));

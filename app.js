@@ -1471,6 +1471,7 @@ function renderPurchases() {
           <td>${productCell(product || { name: "Producto eliminado", unit: "" })}</td>
           <td>${escapeHtml(presentation)}</td>
           <td>${escapeHtml(purchase.supplier)}</td>
+          <td>${escapeHtml(purchase.doc || "-")}</td>
           <td>${formatNumber.format(purchase.quantity)}</td>
           <td>${escapeHtml(purchase.lot || "-")}</td>
           <td class="actions-cell">
@@ -1478,7 +1479,7 @@ function renderPurchases() {
           </td>
         </tr>
       `;
-    }).join("") || emptyRow(7, "No hay compras registradas.");
+    }).join("") || emptyRow(8, "No hay compras registradas.");
 }
 
 function getFilteredOutputs() {

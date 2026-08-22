@@ -48,6 +48,7 @@ const elements = {
   categoryOptions: document.querySelector("#category-options"),
   purchasesTable: document.querySelector("#purchases-table"),
   purchaseCount: document.querySelector("#purchase-count"),
+  exportPurchasesExcel: document.querySelector("#export-purchases-excel"),
   purchaseLines: document.querySelector("#purchase-lines"),
   addPurchaseLine: document.querySelector("#add-purchase-line"),
   outputsTable: document.querySelector("#outputs-table"),
@@ -1444,11 +1445,15 @@ function renderProducts() {
   }).join("") || emptyRow(9, "Todavia no hay productos registrados.");
 }
 
-function renderPurchases() {
-  const filtered = state.purchases.filter((purchase) => {
+function getFilteredPurchases() {
+  return state.purchases.filter((purchase) => {
     const product = getProduct(purchase.productId);
     return matchesSearch([product?.name, purchase.presentation, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
   });
+}
+
+function renderPurchases() {
+  const filtered = getFilteredPurchases();
 
   elements.purchaseCount.textContent = filtered.length;
   elements.purchasesTable.innerHTML = filtered
@@ -2308,6 +2313,43 @@ function exportStockExcel() {
   showToast("Excel XLSX exportado.");
 }
 
+function exportPurchasesExcel() {
+  const purchases = getFilteredPurchases().sort((a, b) => b.date.localeCompare(a.date));
+  if (!purchases.length) {
+    showToast("No hay compras para exportar.");
+    return;
+  }
+
+  const reportRows = [
+    [xlsxText("Reporte de compras", 2)],
+    [xlsxText("Generado", 2), today()],
+    [],
+    ["Fecha", "Producto", "Presentacion", "Proveedor", "Documento", "Cantidad", "Lote"].map((value) => xlsxText(value, 2))
+  ];
+
+  purchases.forEach((purchase) => {
+    const product = getProduct(purchase.productId);
+    reportRows.push([
+      purchase.date || "",
+      product?.name || "Producto eliminado",
+      purchase.presentation || product?.presentation || "",
+      purchase.supplier || "",
+      purchase.doc || "",
+      xlsxNumber(purchase.quantity),
+      purchase.lot || ""
+    ]);
+  });
+
+  const blob = createXlsxBlob(reportRows, "Compras");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `compras-${today()}.xlsx`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Compras exportadas a Excel.");
+}
+
 function handleTableAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -2430,6 +2472,7 @@ function bindEvents() {
     if (!document.hidden) refreshStateFromServer();
   });
   document.querySelector("#export-data").addEventListener("click", exportCsv);
+  elements.exportPurchasesExcel.addEventListener("click", exportPurchasesExcel);
   elements.exportStockExcel.addEventListener("click", exportStockExcel);
   elements.logoutButton.addEventListener("click", handleLogout);
   document.querySelector("#print-purchases").addEventListener("click", () => printView("purchases"));

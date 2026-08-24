@@ -240,8 +240,51 @@
               <div class="bulk-purchase">
                 <div class="section-heading bulk-heading">
                   <h3>Productos</h3>
-                  <button class="ghost-button" type="button" id="add-purchase-line">Agregar producto</button>
+                  <div class="bulk-heading-actions">
+                    <button class="ghost-button" type="button" id="show-quick-product">Registrar producto nuevo</button>
+                    <button class="ghost-button" type="button" id="add-purchase-line">Agregar producto</button>
+                  </div>
                 </div>
+                <section class="quick-product-panel" id="quick-product-panel" hidden>
+                  <div class="section-heading">
+                    <h3>Nuevo producto</h3>
+                    <button class="text-button" type="button" id="cancel-quick-product">Cancelar</button>
+                  </div>
+                  <div class="form-grid quick-product-grid">
+                    <label>
+                      Nombre comercial
+                      <input id="quick-product-name" autocomplete="off" placeholder="Nombre del producto">
+                    </label>
+                    <label>
+                      Materia activa
+                      <input id="quick-product-active-ingredient" autocomplete="off" placeholder="Materia activa">
+                    </label>
+                    <label>
+                      Categoria
+                      <input id="quick-product-category" list="category-options" autocomplete="off" placeholder="Categoria">
+                    </label>
+                    <label>
+                      Presentacion
+                      <input id="quick-product-presentation" autocomplete="off" placeholder="Saco 50 kg">
+                    </label>
+                    <label>
+                      Unidad
+                      <select id="quick-product-unit">
+                        <option value="sacos">sacos</option>
+                        <option value="kg">kg</option>
+                        <option value="litros">litros</option>
+                        <option value="galones">galones</option>
+                        <option value="unidades">unidades</option>
+                        <option value="pastillas">pastillas</option>
+                      </select>
+                    </label>
+                    <label>
+                      Stock minimo
+                      <input id="quick-product-min-stock" type="number" min="0" step="0.01" value="0">
+                    </label>
+                    <button class="primary-button form-action" type="button" id="save-quick-product">Guardar y seleccionar</button>
+                  </div>
+                </section>
                 <div class="table-wrap">
                   <table class="bulk-purchase-table">
                     <thead>

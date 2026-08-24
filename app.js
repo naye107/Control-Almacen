@@ -52,6 +52,10 @@ const elements = {
   exportPurchasesExcel: document.querySelector("#export-purchases-excel"),
   purchaseLines: document.querySelector("#purchase-lines"),
   addPurchaseLine: document.querySelector("#add-purchase-line"),
+  showQuickProduct: document.querySelector("#show-quick-product"),
+  quickProductPanel: document.querySelector("#quick-product-panel"),
+  cancelQuickProduct: document.querySelector("#cancel-quick-product"),
+  saveQuickProduct: document.querySelector("#save-quick-product"),
   outputsTable: document.querySelector("#outputs-table"),
   outputCount: document.querySelector("#output-count"),
   exportOutputsExcel: document.querySelector("#export-outputs-excel"),
@@ -1032,6 +1036,75 @@ function ensurePurchaseLine() {
 function resetPurchaseLines() {
   elements.purchaseLines.innerHTML = "";
   addPurchaseLine();
+}
+
+function resetQuickProductForm() {
+  document.querySelector("#quick-product-name").value = "";
+  document.querySelector("#quick-product-active-ingredient").value = "";
+  document.querySelector("#quick-product-category").value = "";
+  document.querySelector("#quick-product-presentation").value = "";
+  document.querySelector("#quick-product-unit").value = "sacos";
+  document.querySelector("#quick-product-min-stock").value = "0";
+}
+
+function showQuickProductForm() {
+  elements.quickProductPanel.hidden = false;
+  document.querySelector("#quick-product-name").focus();
+}
+
+function hideQuickProductForm() {
+  elements.quickProductPanel.hidden = true;
+  resetQuickProductForm();
+}
+
+async function saveQuickProduct() {
+  const data = {
+    name: document.querySelector("#quick-product-name").value.trim(),
+    activeIngredient: document.querySelector("#quick-product-active-ingredient").value.trim(),
+    category: document.querySelector("#quick-product-category").value.trim(),
+    presentation: document.querySelector("#quick-product-presentation").value.trim(),
+    unit: document.querySelector("#quick-product-unit").value,
+    openingStock: 0,
+    minStock: toNumber(document.querySelector("#quick-product-min-stock").value)
+  };
+
+  if (!data.name || !data.activeIngredient || !data.category || !data.presentation) {
+    showToast("Complete los datos del producto nuevo.");
+    return;
+  }
+
+  const duplicate = state.products.find((product) => {
+    return normalize(product.name) === normalize(data.name)
+      && normalize(product.presentation) === normalize(data.presentation);
+  });
+  if (duplicate) {
+    showToast("Ese producto y presentacion ya estan registrados.");
+    return;
+  }
+
+  const product = {
+    id: uid(),
+    ...data,
+    active: true,
+    expired: false,
+    createdAt: new Date().toISOString()
+  };
+  state.products.push(product);
+
+  if (!(await saveState())) {
+    state.products = state.products.filter((item) => item.id !== product.id);
+    return;
+  }
+
+  renderAll();
+  const targetRow = getPurchaseLineRows().find((row) => {
+    return !row.querySelector(".purchase-line-quantity").value.trim();
+  }) || addPurchaseLine({ productId: product.id });
+  fillPurchaseLineProductOptions(targetRow, product.id);
+  updatePurchaseLinePresentation(targetRow);
+  hideQuickProductForm();
+  targetRow.querySelector(".purchase-line-quantity").focus();
+  showToast("Producto registrado y seleccionado.");
 }
 
 function syncPurchaseLineProductOptions() {
@@ -2434,6 +2507,14 @@ function bindEvents() {
   elements.stockActiveFilter.addEventListener("change", renderStock);
   elements.stockDateFrom.addEventListener("change", renderStock);
   elements.stockDateTo.addEventListener("change", renderStock);
+  elements.showQuickProduct.addEventListener("click", showQuickProductForm);
+  elements.cancelQuickProduct.addEventListener("click", hideQuickProductForm);
+  elements.saveQuickProduct.addEventListener("click", saveQuickProduct);
+  elements.quickProductPanel.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveQuickProduct();
+  });
   elements.addPurchaseLine.addEventListener("click", () => addPurchaseLine());
   elements.purchaseLines.addEventListener("change", (event) => {
     const row = event.target.closest("[data-purchase-line]");

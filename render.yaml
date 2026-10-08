@@ -2,12 +2,15 @@ services:
   - type: web
     name: japurima-almacen
     runtime: node
-    plan: free
+    plan: 1c-2g
+    autoDeployTrigger: off
     region: oregon
     buildCommand: npm ci
     startCommand: npm start
-    healthCheckPath: /api/health
+    healthCheckPath: /api/ready
     envVars:
+      - key: NODE_VERSION
+        value: 24.19.0
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL

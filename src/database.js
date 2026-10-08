@@ -7,6 +7,8 @@ function createPool(url) {
   if (!local && parsed.searchParams.get('sslmode') === 'disable') throw new Error('SSL_REQUIRED_FOR_REMOTE_DATABASE');
   // Remove URL SSL overrides so certificate verification cannot be silently disabled by pg.
   for (const key of ['sslmode','sslcert','sslkey','sslrootcert']) parsed.searchParams.delete(key);
-  return new Pool({ connectionString: parsed.toString(), ssl, connectionTimeoutMillis: 10000, max: 10 });
+  const pool=new Pool({ connectionString: parsed.toString(), ssl, connectionTimeoutMillis: 5000, application_name:'japurima-phase5a', max:10 });
+  pool.on('error',error=>console.error('PostgreSQL pool:',error.code||'CONNECTION_LOST'));
+  return pool;
 }
 module.exports = { createPool };

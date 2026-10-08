@@ -1,0 +1,70 @@
+{
+  "products": [
+    {
+      "id": "legacy-a",
+      "name": "Producto histórico A",
+      "category": "Nitrogenado",
+      "presentation": "Saco 50 kg",
+      "unit": "sacos",
+      "openingStock": 20,
+      "minStock": 2,
+      "legacyNote": "Extensión histórica ficticia"
+    },
+    {
+      "id": "legacy-b",
+      "name": "Producto histórico B",
+      "category": "Herramientas",
+      "presentation": "Unidad",
+      "unit": "unidades",
+      "openingStock": 10,
+      "minStock": 1
+    },
+    {
+      "id": "legacy-c",
+      "name": "Producto histórico C",
+      "category": "Foliar",
+      "presentation": "Bidón 20 L",
+      "unit": "bidones",
+      "openingStock": 10,
+      "minStock": 1
+    }
+  ],
+  "purchases": [
+    {
+      "id": "legacy-buy-a",
+      "productId": "legacy-a",
+      "date": "2026-01-02",
+      "quantity": 20,
+      "presentation": "Saco 50 kg",
+      "supplier": "Proveedor ficticio"
+    },
+    {
+      "id": "legacy-buy-c",
+      "productId": "legacy-c",
+      "date": "2026-01-03",
+      "quantity": 2,
+      "presentation": "Bidón 20 L",
+      "supplier": "Proveedor ficticio"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "legacy-out-a",
+      "productId": "legacy-a",
+      "date": "2026-01-04",
+      "quantity": 1,
+      "presentation": "Saco 50 kg",
+      "destination": "Sector ficticio",
+      "reason": "Ensayo"
+    },
+    {
+      "id": "legacy-out-b",
+      "productId": "legacy-a",
+      "date": "2026-01-05",
+      "quantity": 1,
+      "presentation": "Saco 50 kg",
+      "destination": "Sector ficticio",
+      "reason": "Ensayo"
+    }
+  ]
+}

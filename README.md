@@ -42,4 +42,10 @@ La Fase 4 agrega PDFs A4 persistidos y reportes exclusivos de ADMINISTRADOR, con
 Los PDF públicos no incluyen la clave de seguimiento; el TXT previo sigue siendo privado.
 Consulte [docs/FASE4.md](docs/FASE4.md) para activación local, pruebas y recuperación;
 [docs/INFORME_FASE4.md](docs/INFORME_FASE4.md) detalla resultados, capacidad y limitaciones.
-La migración 004 se ejecutó únicamente sobre PostgreSQL aislado de pruebas. No se incluye Fase 5.
+La migración 004 se ejecutó únicamente sobre PostgreSQL aislado de pruebas. La preparación técnica de Fase 5A está documentada abajo.
+
+## Fase 5A — versión 1.5.0
+
+Node.js 24.19.0 LTS, protocolo de escritura protegido en PostgreSQL, límites SQL/HTTP/documentos, readiness y CSV seguro. No se publicó ni migró producción.
+
+Consulte [docs/FASE5A.md](docs/FASE5A.md), [docs/INFORME_FASE5A.md](docs/INFORME_FASE5A.md) y [docs/DESPLIEGUE_RECUPERACION.md](docs/DESPLIEGUE_RECUPERACION.md). `npm run test:phase5a` crea PostgreSQL local aislado; `npm run release:check` verifica el commit reproducible. La migración 005 requiere servidor 1.5.0: versiones anteriores no pueden guardar inventario después de aplicarla.

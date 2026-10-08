@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { AppError } = require('./errors');
 const { createPool } = require('./database');
+const {limits,databaseError}=require('./operational-limits');
 const emptyState = () => ({products:[],purchases:[],outputs:[]});
 class FileStore {
  constructor(dir) { this.dir=path.resolve(dir); this.file=path.join(this.dir,'phase1.json'); this.lock=path.join(this.dir,'.phase1.lock'); this.queue=Promise.resolve(); }
@@ -39,6 +40,7 @@ class FileStore {
   });
   this.queue=run.catch(()=>{}); return run;
  }
+ async health(){await fs.access(this.file);return {storage:'local'};}
  async close() { await this.queue; if(this.handle) { await this.handle.close(); this.handle=null; await fs.unlink(this.lock); } }
 }
 class FileTransaction {
@@ -61,6 +63,7 @@ class FileTransaction {
  async getDocument(kind,id,version){const d=(this.doc.documents||[]).find(x=>x.kind===kind&&x.sourceId===id&&x.templateVersion===version);return d?{...d,pdf:Buffer.from(d.pdf,'base64')}:null;}
  async putDocument(d){const old=await this.getDocument(d.kind,d.sourceId,d.templateVersion);if(old)return old;this.doc.documents||=[];this.doc.documents.push({...d,pdf:d.pdf.toString('base64')});this.dirty=true;return d;}
  async lockDispatchPrincipal() {}
+ async lockLoginUser() {}
  async getRequest(id) { return this.doc.requests.find(r=>r.id===id)||null; }
  async delivered(id) { const rows=this.doc.dispatches||[];const map=new Map();for(const d of rows.filter(d=>d.requestId===id&&d.status==='CONFIRMADO'))for(const i of d.items)map.set(i.requestItemId,require('../shared/dispatch-rules').add(map.get(i.requestItemId)||require('../shared/dispatch-rules').zero,require('../shared/dispatch-rules').read(i.quantity)));return map; }
  async findDispatch(operationId) { return (this.doc.dispatches||[]).find(d=>d.operationId===operationId)||null; }
@@ -85,15 +88,17 @@ class PostgresStore {
  constructor(url) { this.pool=createPool(url); }
  async init() {
   // Read-only preflight. Schema changes are performed only by the explicit migration command.
-  await this.pool.query('SELECT version FROM inventory_state WHERE id=1');
-  const result=await this.pool.query("SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql')");
-  if(result.rowCount!==4) throw new Error('MIGRATIONS_REQUIRED');
+  await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:5000});
+  const result=await this.pool.query({query_timeout:5000,text:"SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql','005_production_hardening.sql')"});
+  if(result.rowCount!==5) throw new Error('MIGRATIONS_REQUIRED');
  }
+ async health(){const r=await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:3000});if(r.rowCount!==1)throw new Error('INVENTORY_MISSING');return {storage:'postgresql'};}
  async transact(work,options={}) {
-  const client=await this.pool.connect();
-  try { await client.query(options.readOnly?'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY':'BEGIN'); const result=await work(new PostgresTransaction(client)); await client.query('COMMIT'); return result; }
-  catch(error) { await client.query('ROLLBACK').catch(()=>{}); throw error; }
-  finally { client.release(); }
+  let client;try{client=await this.pool.connect();}catch(e){throw e.status?e:new AppError(503,'DATABASE_UNAVAILABLE');}
+  let discard=false;
+  try { await client.query(options.readOnly?'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY':'BEGIN'); await client.query("SELECT set_config('lock_timeout',$1,true),set_config('idle_in_transaction_session_timeout',$2,true),set_config('statement_timeout',$3,true)",[String(limits().lockMs),String(limits().idleMs),String(limits().statementMs)]); const result=await work(new PostgresTransaction(client)); await client.query('COMMIT'); return result; }
+  catch(error) { try{await client.query('ROLLBACK');}catch{discard=true;} throw databaseError(error); }
+  finally { client.release(discard); }
  }
  async close() { await this.pool.end(); }
 }
@@ -104,7 +109,7 @@ class PostgresTransaction {
   if(!result.rowCount) throw new Error('INVENTORY_MISSING');
   return {state:result.rows[0].data,version:String(result.rows[0].version)};
  }
- async saveInventory(state,version) { await this.client.query('UPDATE inventory_state SET data=$1::jsonb,version=$2,updated_at=now() WHERE id=1',[JSON.stringify(state),String(version)]); }
+ async saveInventory(state,version) {const data=JSON.stringify(state);if(Buffer.byteLength(data)>limits().inventoryBytes)throw new AppError(413,'INVENTORY_TOO_LARGE');await this.client.query("WITH protocol AS MATERIALIZED (SELECT set_config('japurima.writer_protocol','phase5a',true)) UPDATE inventory_state SET data=$1::jsonb,version=$2,updated_at=now() FROM protocol WHERE id=1",[data,String(version)]); }
  async referencedRequestProducts() { return (await this.client.query('SELECT DISTINCT product_id FROM request_items')).rows.map(r=>r.product_id); }
  async linkedOutputs() { return (await this.client.query('SELECT output_id FROM dispatch_inventory_links')).rows.map(r=>r.output_id); }
  async findUser(username) { return userFrom((await this.client.query('SELECT * FROM users WHERE username=$1',[username])).rows[0]); }
@@ -123,6 +128,7 @@ class PostgresTransaction {
 
  async getDocument(kind,id,version){const row=(await this.client.query('SELECT * FROM document_records WHERE kind=$1 AND source_id=$2 AND template_version=$3',[kind,id,version])).rows[0];return row&&{id:row.id,kind:row.kind,sourceId:row.source_id,templateVersion:row.template_version,snapshot:row.snapshot,pdf:row.pdf,sha256:row.sha256,filename:row.filename,generatedAt:new Date(row.generated_at).toISOString(),generatedBy:row.generated_by};}
  async putDocument(d){await this.client.query('INSERT INTO document_records(id,kind,request_id,dispatch_id,source_id,template_version,snapshot,pdf,sha256,filename,generated_at,generated_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12) ON CONFLICT(kind,source_id,template_version) DO NOTHING',[d.id,d.kind,d.kind==='REQUEST'?d.sourceId:null,d.kind==='DISPATCH'?d.sourceId:null,d.sourceId,d.templateVersion,JSON.stringify(d.snapshot),d.pdf,d.sha256,d.filename,d.generatedAt,d.generatedBy]);return this.getDocument(d.kind,d.sourceId,d.templateVersion);}
+ async lockLoginUser(id){await this.client.query('SELECT id FROM users WHERE id=$1 FOR SHARE',[id]);}
  async lockDispatchPrincipal(hash) { await this.client.query('SELECT u.id FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 FOR SHARE OF u,s',[hash]); }
  async getRequest(id,lock=false) { const row=(await this.client.query('SELECT code FROM requests WHERE id=$1'+(lock?' FOR UPDATE':''),[id])).rows[0];return row?this.findRequest(row.code):null; }
  async delivered(id) { const Q=require('../shared/dispatch-rules');const rows=(await this.client.query("SELECT i.request_item_id,sum(i.quantity)::text AS total FROM dispatch_items i JOIN dispatches d ON d.id=i.dispatch_id WHERE d.request_id=$1 AND d.status='CONFIRMADO' GROUP BY i.request_item_id",[id])).rows;return new Map(rows.map(r=>[r.request_item_id,Q.read(r.total)])); }

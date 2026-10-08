@@ -12,3 +12,10 @@ data/.phase1.lock
 
 .tools/
 .test-runtime/
+
+data/
+output/
+docs/evidencias*/
+docs/pruebas-*.txt
+docs/verificacion-*.txt
+*.log

@@ -1,16 +1,16 @@
 'use strict';
-const PDFDocument=require('pdfkit'),path=require('node:path');
+const PDFDocument=require('pdfkit'),path=require('node:path');const {AppError}=require('../errors');
 const ROOT=path.resolve(__dirname,'../..'),GREEN='#245740',INK='#18372B',MUTED='#65776E',LIGHT='#EFF4EE';
 const categories={AGROQUIMICOS:'Agroquímicos',HERRAMIENTAS:'Herramientas',OTROS:'Otros productos'};
 const date=value=>new Intl.DateTimeFormat('es-PE',{timeZone:'America/Lima',dateStyle:'long',timeStyle:'short'}).format(new Date(value));
 function clean(value){return String(value??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/[\u2011\u2013\u2014]/g,'-');}
 function render(s){return new Promise((resolve,reject)=>{
- const doc=new PDFDocument({size:'A4',margins:{top:50,right:50,bottom:55,left:50},bufferPages:true,info:{Title:s.kind==='REQUEST'?'PEDIDO DE ALMACÉN':'CONSTANCIA DE DESPACHO DE ALMACÉN',Author:'AGRÍCOLA JAPURIMA S.A.',Subject:s.code,CreationDate:new Date(s.createdAt)}});let chunks=[],bytes=0;doc.on('data',c=>{bytes+=c.length;if(bytes>5242880){doc.destroy(new Error('DOCUMENT_TOO_LARGE'));return;}chunks.push(c);});doc.on('error',reject);doc.on('end',()=>resolve(Buffer.concat(chunks)));
+ const doc=new PDFDocument({size:'A4',margins:{top:50,right:50,bottom:55,left:50},bufferPages:true,info:{Title:s.kind==='REQUEST'?'PEDIDO DE ALMACÉN':'CONSTANCIA DE DESPACHO DE ALMACÉN',Author:'AGRÍCOLA JAPURIMA S.A.',Subject:s.code,CreationDate:new Date(s.createdAt)}});let pages=1;doc.on('pageAdded',()=>{if(++pages>30)throw new AppError(413,'DOCUMENT_TOO_LARGE');});let chunks=[],bytes=0;doc.on('data',c=>{bytes+=c.length;if(bytes>5242880){doc.destroy(new AppError(413,'DOCUMENT_TOO_LARGE'));return;}chunks.push(c);});doc.on('error',reject);doc.on('end',()=>resolve(Buffer.concat(chunks)));
  try{doc.registerFont('Regular',path.join(ROOT,'assets/fonts/NotoSans-Regular.ttf'));doc.registerFont('Bold',path.join(ROOT,'assets/fonts/NotoSans-Bold.ttf'));const W=doc.page.width-100,BOTTOM=doc.page.height-75;let y=0;
  function text(value,x,top,width,size=9,font='Regular',color=INK,align='left'){doc.font(font).fontSize(size).fillColor(color).text(clean(value),x,top,{width,align,lineGap:2});}
  function height(value,width,size=9,font='Regular'){return doc.font(font).fontSize(size).heightOfString(clean(value),{width,lineGap:2});}
  function header(continued=false){doc.rect(0,0,doc.page.width,7).fill(GREEN);doc.image(path.join(ROOT,'assets/japurima-logo.png'),50,26,{fit:[132,54]});text('AGRÍCOLA JAPURIMA S.A.',202,32,W-152,11,'Bold',GREEN);text('SISTEMA INTEGRADO DE GESTIÓN DE ALMACÉN',202,52,W-152,7,'Regular',MUTED);text(s.kind==='REQUEST'?'PEDIDO DE ALMACÉN':'CONSTANCIA DE DESPACHO DE ALMACÉN',50,99,W, s.kind==='REQUEST'?19:15,'Bold');text(s.code+(continued?' · Continuación':''),50,129,W,10,'Bold',GREEN);doc.moveTo(50,151).lineTo(50+W,151).strokeColor('#CAD9CF').stroke();y=169;}
- function next(){doc.addPage();header(true);}
+ function next(){if(doc.bufferedPageRange().count>=30)throw new Error('DOCUMENT_TOO_LARGE');doc.addPage();header(true);}
  function ensure(h){if(y+h>BOTTOM)next();}
  function section(title){ensure(30);text(title,50,y,W,10,'Bold',GREEN);y+=25;}
  function field(label,value){if(value===null||value===undefined||value==='')return;const h=Math.max(18,height(value,W-135));ensure(h+8);text(label.toUpperCase(),50,y,125,7,'Bold',MUTED);text(value,185,y,W-135,9);y+=h+8;}

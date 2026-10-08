@@ -6,15 +6,16 @@ const { validateChange } = require('./inventory-service');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const { RequestService, publicRequest } = require('./request-service');
 class Services {
- constructor(store) { this.store=store; this.dummyHash=null; this.requests=new RequestService(store); this.documents=new (require('./document-service').DocumentService)(store,this); this.reports=new (require('./report-service').ReportService)(store,this); this.dispatches=new (require('./dispatch-service').DispatchService)(store,this); }
+ constructor(store) { this.store=store; this.dummyHash=null;this.heavy=require('./operational-limits').heavyGate();this.passwords=new (require('./operational-limits').WorkGate)({limit:2,queue:8,rssBytes:require('./operational-limits').limits().rssBytes}); this.requests=new RequestService(store); this.documents=new (require('./document-service').DocumentService)(store,this); this.reports=new (require('./report-service').ReportService)(store,this); this.dispatches=new (require('./dispatch-service').DispatchService)(store,this); }
  async init() { this.dummyHash=await hashPassword(randomToken()); }
- async login(username,password,oldHash) {
+ async login(username,password,oldHash){return this.passwords.run(()=>this.loginChecked(username,password,oldHash));}
+ async loginChecked(username,password,oldHash) {
   const user=await this.store.transact(tx=>tx.findUser(String(username||'').trim().toLowerCase()));
   const valid=await verifyPassword(password,user?.passwordHash||this.dummyHash);
   if(!valid||!user?.active) { await this.store.transact(tx=>tx.audit({action:'LOGIN_FAILED',details:{}})); throw new AppError(401,'INVALID_LOGIN'); }
   const token=randomToken(); const session={hash:digest(token),userId:user.id,csrfToken:randomToken(),expiresAt:Date.now()+12*60*60*1000};
   await this.store.transact(async tx=>{
-   const current=await tx.findUser(user.username);
+   await tx.lockLoginUser(user.id);const current=await tx.findUser(user.username);
    if(!current?.active || current.passwordHash!==user.passwordHash)throw new AppError(401,'INVALID_LOGIN');
    if(oldHash)await tx.revokeSessions(null,oldHash);
    await tx.putSession(session);await tx.audit({actorId:user.id,action:'LOGIN'});
@@ -33,6 +34,7 @@ class Services {
   const payloadHash=digest(JSON.stringify(payload));
   return this.store.transact(async tx=>{
    const current=await tx.getInventory(true);
+   await tx.lockDispatchPrincipal(hash);
    const session=await this.authenticated(hash,tx,'ADMINISTRADOR');
    const replay=await tx.getWrite(operationId);
    if(replay) { if(replay.actorId!==session.user.id||replay.payloadHash!==payloadHash)throw new AppError(409,'IDEMPOTENCY_CONFLICT'); return {ok:true,revision:replay.version,replayed:true}; }
@@ -47,7 +49,7 @@ class Services {
  }
  async createUser(data,hash,bootstrap=false) {
   const input={username:String(data.username||'').toLowerCase(),role:data.role};validateUser(input);
-  const passwordHash=await hashPassword(data.password);
+  const passwordHash=await this.passwords.run(()=>hashPassword(data.password));
   return this.store.transact(async tx=>{
    if(tx.client)await tx.client.query('SELECT pg_advisory_xact_lock(74182027)');
    const users=await tx.listUsers(true);
@@ -62,7 +64,7 @@ class Services {
  async updateUser(hash,id,data) {
   if(!UUID.test(id))throw new AppError(404,'USER_NOT_FOUND');
   if(Object.keys(data).some(k=>!['role','active','password'].includes(k)))throw new AppError(422,'INVALID_USER_FIELDS');
-  const passwordHash=data.password===undefined?null:await hashPassword(data.password);
+  const passwordHash=data.password===undefined?null:await this.passwords.run(()=>hashPassword(data.password));
   return this.store.transact(async tx=>{
    if(tx.client)await tx.client.query('SELECT pg_advisory_xact_lock(74182027)');
    const users=await tx.listUsers(true);const actor=(await this.authenticated(hash,tx,'ADMINISTRADOR')).user;

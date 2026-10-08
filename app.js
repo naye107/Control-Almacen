@@ -1942,9 +1942,7 @@ function exportCsv() {
     ]);
   });
 
-  const csv = rows.map((row) => {
-    return row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",");
-  }).join("\n");
+  const csv = JapurimaCsv.create(rows);
 
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);

@@ -15,3 +15,7 @@ REVOKE DELETE, TRUNCATE ON dispatches, dispatch_items, dispatch_inventory_links 
 -- Fase 4: documentos históricos inmutables.
 GRANT SELECT, INSERT ON document_records TO :"app_role";
 REVOKE UPDATE, DELETE, TRUNCATE ON document_records FROM :"app_role";
+
+REVOKE DELETE, TRUNCATE ON inventory_state FROM :"app_role";
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM :"app_role";

@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const {validateChange}=require('../src/inventory-service');const rules=require('../shared/inventory-rules');const {fixture}=require('./helpers');
-test('compatibilidad de inventario historico real: 3 productos y movimientos sin campos nuevos',()=>{
- const original=JSON.parse(fs.readFileSync('data/inventory.json','utf8'));const before=JSON.stringify(original);const result=validateChange(original,structuredClone(original));assert.equal(JSON.stringify(result.state),before);assert.equal(result.changes.length,0);
+test('compatibilidad de inventario histórico ficticio: 3 productos y movimientos sin campos nuevos',()=>{
+ const original=JSON.parse(fs.readFileSync('test/fixtures/legacy-inventory.json','utf8'));const before=JSON.stringify(original);const result=validateChange(original,structuredClone(original));assert.equal(JSON.stringify(result.state),before);assert.equal(result.changes.length,0);
  assert.deepEqual(original.products.map(p=>rules.getPresentationBreakdown(original,p).reduce((n,b)=>n+b.stock,0)),[38,10,12]);
  const next=structuredClone(original);next.products[0].minStock=11;const changed=validateChange(original,next);assert.deepEqual(changed.state.purchases,original.purchases);assert.deepEqual(changed.state.outputs,original.outputs);assert.equal(changed.state.products[2].unit,'bidones');
 });

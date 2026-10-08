@@ -1,7 +1,7 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.JapurimaXlsx=factory();})(typeof globalThis!=='undefined'?globalThis:this,function(){
 'use strict';
 function escapeXml(value) {
-  return String(value ?? "")
+  return String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")

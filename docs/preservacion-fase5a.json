@@ -1,0 +1,31 @@
+{
+  "backup": "backups/fase1-2026-10-08T21-11-05-426Z",
+  "restoredFiles": 159,
+  "files": [
+    {
+      "file": "data/inventory.json",
+      "sha256": "9DA4530C9BE96639F783631222673D0B76F57B08FE077D4F386E82ED12276BA9",
+      "preserved": true
+    },
+    {
+      "file": "migrations/001_phase1.sql",
+      "sha256": "40B48FA450201F933A6DF40E99A8A9CA19C6246B0120F63B12C5FBDD880D07FD",
+      "preserved": true
+    },
+    {
+      "file": "migrations/002_public_requests.sql",
+      "sha256": "45E7CB210FD9AA606776BF389A3DE855FA9A6C30EEE1D4833C9E111F2E35D4CC",
+      "preserved": true
+    },
+    {
+      "file": "migrations/003_dispatches.sql",
+      "sha256": "D87E266C41FD4259D91D93C3FAC29B2004C1303A284CC4BAEE51F806D12B1616",
+      "preserved": true
+    },
+    {
+      "file": "migrations/004_document_records.sql",
+      "sha256": "00D9D9A06E93CABEBCEB30B49DFA3C319204EFD8E1ED6133C10C042B9B6E140B",
+      "preserved": true
+    }
+  ]
+}

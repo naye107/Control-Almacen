@@ -22,5 +22,7 @@ test('frontend: sincronizacion no pisa formularios ni una operacion pendiente',a
 test('frontend: ALMACENERO no guarda; exportador XLSX y Kardex siguen disponibles',async()=>{
  const b=browser(async()=>{throw new Error('Unexpected request');});b.run("currentRole='ALMACENERO';");assert.equal(await b.run('saveState()'),false);
  const blob=b.run("createXlsxBlob([['Producto','Cantidad'],['Urea',xlsxNumber(38)]], 'Existencias')");const bytes=Buffer.from(await blob.arrayBuffer());assert.equal(bytes.readUInt32LE(0),0x04034b50);assert.ok(bytes.includes(Buffer.from('Urea')));assert.ok(bytes.includes(Buffer.from('xl/worksheets/sheet1.xml')));
- const original=JSON.parse(fs.readFileSync('data/inventory.json','utf8'));b.context.historical=original;b.run('setState(historical);');assert.equal(b.run('getMovements().length'),4);assert.equal(b.run('getProductStats(state.products[0]).stock'),38);
+ const original=JSON.parse(fs.readFileSync('test/fixtures/legacy-inventory.json','utf8'));b.context.historical=original;b.run('setState(historical);');assert.equal(b.run('getMovements().length'),4);assert.equal(b.run('getProductStats(state.products[0]).stock'),38);
 });
+
+test('frontend: errores recuperables SQL y recursos conservan operación y nunca anuncian éxito',async()=>{for(const [status,error] of [[503,'RESOURCE_BUSY'],[503,'DATABASE_TIMEOUT'],[409,'OPERATION_BUSY']]){const b=browser(async()=>response(status,{error}));b.run("state.products[0].name='Pendiente';");assert.equal(await b.run('saveState()'),false);assert.ok(b.storage.has('japurima.pending.testadmin'));assert.equal(b.run('JSON.parse(pendingOperation.snapshot).products[0].name'),'Pendiente');assert.ok(!b.messages.some(m=>m.includes('Cambios guardados')));}});

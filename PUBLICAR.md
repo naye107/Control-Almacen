@@ -1,3 +1,7 @@
+# Publicación — estado actual 1.5.0
+
+Producción requiere autorización de Fase 5B. No aplicar esta configuración ni migraciones automáticamente. El procedimiento vigente está en [docs/DESPLIEGUE_RECUPERACION.md](docs/DESPLIEGUE_RECUPERACION.md); la preparación y pruebas en [docs/FASE5A.md](docs/FASE5A.md). La guía Fase 1 siguiente es histórica y no sustituye el corte de escritores ni la recuperación de movimientos posteriores.
+
 # Publicación y activación — Fase 1
 
 No se ha realizado ningún despliegue ni migración de producción. Publicar requiere autorización adicional.

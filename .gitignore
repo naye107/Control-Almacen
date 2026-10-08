@@ -3,3 +3,12 @@ server.log
 server.err
 .env
 node_modules/
+backups/
+data/phase1.json
+data/phase1.json.*
+data/.phase1.lock
+.env.*
+!.env.example
+
+.tools/
+.test-runtime/

@@ -1,14 +1,23 @@
 {
   "name": "japurima-almacen",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Sistema web de control de productos de almacen JAPURIMA.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check app.js"
+    "check": "node scripts/check.cjs",
+    "test": "node scripts/test.cjs",
+    "backup": "node scripts/backup.cjs",
+    "migrate": "node scripts/migrate.cjs",
+    "create-admin": "node scripts/create-admin.cjs",
+    "test:postgres": "node scripts/test-postgres.cjs",
+    "test:browser": "node scripts/test-browser.cjs",
+    "test:dispatches": "node scripts/test-postgres.cjs --with-browser",
+    "test:documents": "node scripts/test-postgres.cjs --with-documents"
   },
   "dependencies": {
+    "pdfkit": "0.20.2",
     "pg": "^8.16.0"
   },
   "engines": {

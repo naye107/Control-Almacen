@@ -8,6 +8,38 @@ let isSyncing = false;
 let lastServerSnapshot = "";
 let lastServerRevision = "";
 let outputTemplates = [];
+let currentRole = '';
+let currentUsername = '';
+let csrfToken = '';
+let pendingSave = false;
+let pendingOperation = null;
+let formDirty = false;
+function recoveryKey() { return 'japurima.pending.' + currentUsername; }
+function rememberPending(operation) {
+  pendingOperation = operation;
+  try { if (operation) sessionStorage.setItem(recoveryKey(), JSON.stringify(operation)); else sessionStorage.removeItem(recoveryKey()); } catch { showToast('No se pudo almacenar recuperacion: descargue la copia pendiente antes de cerrar.'); }
+  const panel = document.querySelector('#pending-panel'); if (panel) panel.hidden = !operation;
+}
+function applyRole() {
+  const admin = currentRole === 'ADMINISTRADOR';
+  document.body.dataset.role = currentRole;
+  document.querySelectorAll('[data-admin-only]').forEach(el => { el.hidden = !admin; });
+  if (!admin && ['products','purchases','outputs','users','reports'].some(name => document.querySelector('#view-' + name)?.classList.contains('active'))) switchView('stock');
+}
+function sessionInfo(payload) {
+  const nextUsername = typeof payload.user === 'string' ? payload.user : payload.user?.username || '';
+  if (currentUsername && currentUsername !== nextUsername) { pendingOperation = null; formDirty = false; document.querySelector('#pending-panel').hidden = true; }
+  if(currentUsername!==nextUsername || (payload.role || payload.user?.role)!=='ADMINISTRADOR')window.JapurimaReports?.clear();
+  currentRole = payload.role || payload.user?.role || '';
+  currentUsername = typeof payload.user === 'string' ? payload.user : payload.user?.username || '';
+  csrfToken = payload.csrfToken || '';
+  applyRole();
+}
+function downloadPending() {
+  if (!pendingOperation) return;
+  const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([JSON.stringify(pendingOperation,null,2)],{type:'application/json'})); link.download = 'japurima-operacion-pendiente.json'; link.click(); URL.revokeObjectURL(link.href);
+}
+
 
 const state = {
   products: [],
@@ -89,12 +121,17 @@ const formatNumber = new Intl.NumberFormat("es-PE", {
 });
 
 const today = () => new Date().toISOString().slice(0, 10);
-const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+const uid = () => {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16)); bytes[6]=(bytes[6]&15)|64; bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''); return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+};
 const toNumber = (value) => Number.parseFloat(value || "0");
 const normalize = (value) => String(value || "").trim().toLowerCase();
 const isServerMode = () => window.location.protocol !== "file:";
 
 function showLogin(message = "") {
+  window.JapurimaReports?.clear();
   elements.appShell.hidden = true;
   elements.loginScreen.hidden = false;
   elements.loginError.hidden = !message;
@@ -109,7 +146,7 @@ function showApp() {
 }
 
 async function checkSession() {
-  if (!isServerMode()) return true;
+  if (!isServerMode()) { showLogin('Abra el sistema mediante Node.js; el modo archivo no permite autenticacion segura.'); return false; }
 
   try {
     const response = await fetch("/api/session", {
@@ -119,6 +156,7 @@ async function checkSession() {
     if (!response.ok) return false;
 
     const payload = await response.json();
+    if (payload.authenticated) sessionInfo(payload);
     return Boolean(payload.authenticated);
   } catch {
     showLogin("No se pudo conectar al servidor.");
@@ -147,6 +185,7 @@ async function handleLogin(event) {
       return;
     }
 
+    sessionInfo(await response.json());
     await startApp();
   } catch {
     showLogin("No se pudo conectar al servidor.");
@@ -157,10 +196,13 @@ async function handleLogout() {
   if (isServerMode()) {
     await fetch("/api/logout", {
       method: "POST",
-      credentials: "same-origin"
-    }).catch(() => {});
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: "{}"
+    }).then(response => { if (!response.ok) throw new Error("Logout rechazado"); }).catch(() => { throw new Error("No se pudo cerrar la sesion del servidor"); });
   }
 
+  pendingOperation = null; document.querySelector("#pending-panel").hidden = true;
   setState({ products: [], purchases: [], outputs: [] });
   stopAutoSync();
   showLogin("Sesion cerrada.");
@@ -171,7 +213,7 @@ function normalizeProduct(product) {
 
   return {
     ...product,
-    unit: product.unit === "bidones" ? "galones" : product.unit
+    unit: product.unit
   };
 }
 
@@ -249,54 +291,41 @@ async function loadState() {
   return true;
 }
 
-function saveState() {
-  const snapshot = JSON.stringify(state);
-
-  if (!backendAvailable) {
-    if (isServerMode()) {
-      showToast("No se guardo: el servidor no esta disponible.");
-      return Promise.resolve(false);
-    }
-
-    localStorage.setItem(STORAGE_KEY, snapshot);
-    return Promise.resolve(true);
-  }
-
-  saveQueue = saveQueue
-    .then(async () => {
-      const response = await fetch("/api/state", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: snapshot
-      });
-
-      if (response.status === 401) {
-        showLogin("Sesion vencida. Ingrese nuevamente.");
-        return false;
-      }
-      if (!response.ok) throw new Error("No se pudo guardar.");
-      const payload = await response.json().catch(() => ({}));
-      lastServerRevision = payload.revision || lastServerRevision;
-      lastServerSnapshot = snapshot;
-      return true;
-    })
-    .catch(() => {
-      backendAvailable = false;
-      if (!isServerMode()) {
-        localStorage.setItem(STORAGE_KEY, snapshot);
-        return true;
-      }
-
-      showToast("No se guardo: el servidor no respondio.");
-      return false;
+async function saveState(retry = false) {
+  if (currentRole !== 'ADMINISTRADOR') { showToast('No tiene permiso para modificar inventario.'); return false; }
+  if (pendingSave || (pendingOperation && !retry)) { showToast('Resuelva la operacion pendiente antes de guardar otra.'); return false; }
+  const operation = retry ? pendingOperation : { id: uid(), revision: lastServerRevision, snapshot: JSON.stringify(state), username: currentUsername };
+  if (!operation) return false;
+  pendingSave = true;
+  rememberPending(operation);
+  try {
+    const response = await fetch('/api/state', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'X-State-Revision': operation.revision, 'X-Operation-Id': operation.id },
+      body: operation.snapshot
     });
-
-  return saveQueue;
+    const payload = await response.json();
+    if (!response.ok) {
+      if (response.status === 401) showLogin('Sesion vencida. Su operacion pendiente se conserva.');
+      const messages = { STATE_CONFLICT: 'Otro usuario actualizo el inventario. Descargue la copia pendiente y cargue el estado actual antes de volver a registrar.', INSUFFICIENT_STOCK: 'El servidor rechazo el cambio por stock insuficiente.', HISTORICAL_UNIT_OR_PRESENTATION_IMMUTABLE: 'No se puede cambiar la unidad o presentacion de un producto con historial.' };
+      throw new Error(messages[payload.error] || 'No se guardo: ' + payload.error);
+    }
+    // The acknowledged payload is durable; clear pending only after a positive response.
+    lastServerRevision = payload.revision;
+    lastServerSnapshot = operation.snapshot;
+    setState(JSON.parse(operation.snapshot));
+    rememberPending(null); formDirty = false; backendAvailable = true;
+    showToast('Cambios guardados en el servidor.');
+    return true;
+  } catch (error) {
+    if (lastServerSnapshot) setState(JSON.parse(lastServerSnapshot));
+    showToast(error.message === 'Failed to fetch' ? 'No se confirmo el guardado. La copia pendiente se conserva; puede reintentar sin duplicar.' : error.message);
+    return false;
+  } finally { pendingSave = false; }
 }
 
 async function refreshStateFromServer() {
-  if (!isServerMode() || !backendAvailable || elements.appShell.hidden || isSyncing) return;
+  if (!isServerMode() || elements.appShell.hidden || isSyncing || pendingSave || pendingOperation || formDirty) return;
 
   isSyncing = true;
   try {
@@ -336,7 +365,9 @@ async function refreshStateFromServer() {
       lastServerSnapshot = snapshot;
       setState(serverState);
       renderAll();
+      applyRole();
     }
+    backendAvailable = true;
   } catch {
     backendAvailable = false;
     showToast("No se pudo sincronizar con el servidor.");
@@ -376,116 +407,9 @@ function getOutputs(productId) {
   return state.outputs.filter((output) => output.productId === productId);
 }
 
-function getPresentationInfo(presentation) {
-  const label = String(presentation || "").trim();
-  const parsed = parsePresentationQuantity(label);
+function getPresentationInfo(presentation) { return InventoryRules.getPresentationInfo(presentation); }
 
-  if (!parsed) {
-    return {
-      key: `text:${normalize(label)}`,
-      group: "text",
-      baseValue: null
-    };
-  }
-
-  if (parsed.unit === "L") {
-    return {
-      key: `volume:${Number((parsed.value * 1000).toFixed(6))}`,
-      group: "volume",
-      unit: "L",
-      baseValue: parsed.value * 1000
-    };
-  }
-
-  if (parsed.unit === "ml") {
-    return {
-      key: `volume:${Number(parsed.value.toFixed(6))}`,
-      group: "volume",
-      unit: "ml",
-      baseValue: parsed.value
-    };
-  }
-
-  if (parsed.unit === "kg") {
-    return {
-      key: `weight:${Number((parsed.value * 1000).toFixed(6))}`,
-      group: "weight",
-      unit: "kg",
-      baseValue: parsed.value * 1000
-    };
-  }
-
-  if (parsed.unit === "g") {
-    return {
-      key: `weight:${Number(parsed.value.toFixed(6))}`,
-      group: "weight",
-      unit: "g",
-      baseValue: parsed.value
-    };
-  }
-
-  return {
-    key: `units:${parsed.unit}:${Number(parsed.value.toFixed(6))}`,
-    group: "units",
-    unit: parsed.unit,
-    baseValue: parsed.value
-  };
-}
-
-function getPresentationBreakdown(product, extraOutputs = [], options = {}) {
-  const buckets = new Map();
-  const dateRange = options.dateRange || {};
-
-  function ensureBucket(presentation) {
-    const label = String(presentation || product.presentation || "Sin presentacion").trim();
-    const info = getPresentationInfo(label);
-
-    if (!buckets.has(info.key)) {
-      buckets.set(info.key, {
-        key: info.key,
-        label,
-        info,
-        opening: 0,
-        purchased: 0,
-        output: 0,
-        stock: 0
-      });
-    }
-
-    return buckets.get(info.key);
-  }
-
-  ensureBucket(product.presentation).opening += toNumber(product.openingStock);
-
-  getPurchases(product.id).forEach((purchase) => {
-    const bucket = ensureBucket(purchase.presentation || product.presentation);
-    const quantity = toNumber(purchase.quantity);
-    if (isBeforeDateRange(purchase.date, dateRange)) {
-      bucket.opening += quantity;
-    } else if (isDateInRange(purchase.date, dateRange)) {
-      bucket.purchased += quantity;
-    }
-  });
-
-  [...getOutputs(product.id), ...extraOutputs.filter((output) => output.productId === product.id)].forEach((output) => {
-    getOutputAllocations(output, product).forEach((allocation) => {
-      const bucket = ensureBucket(allocation.presentation || product.presentation);
-      const quantity = toNumber(allocation.quantity);
-      if (isBeforeDateRange(output.date, dateRange)) {
-        bucket.opening -= quantity;
-      } else if (isDateInRange(output.date, dateRange)) {
-        bucket.output += quantity;
-      }
-    });
-  });
-
-  return [...buckets.values()]
-    .map((item) => ({
-      ...item,
-      stock: item.opening + item.purchased - item.output
-    }))
-    .sort((left, right) => left.label.localeCompare(right.label, "es"));
-}
+function getPresentationBreakdown(product, extraOutputs = [], options = {}) { return InventoryRules.getPresentationBreakdown(state, product, extraOutputs, options); }
 
 function getProductStats(product, options = {}) {
   const breakdown = getPresentationBreakdown(product, [], options);
@@ -586,47 +510,7 @@ function statusBadge(product, stats) {
   return `<span class="badge ${className}">${text}</span>`;
 }
 
-function parsePresentationQuantity(presentation) {
-  const text = String(presentation || "").toLowerCase();
-  const match = text.match(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|kilogramos?|g|gr|gramos?|l|lt|lts|litros?|ml|pastillas?|tabletas?|unidades?|unds?|und|u)\b/i);
-
-  if (!match) return null;
-
-  const value = Number.parseFloat(match[1].replace(",", "."));
-  if (!Number.isFinite(value)) return null;
-
-  const rawUnit = match[2].toLowerCase();
-  const unitMap = {
-    kilo: "kg",
-    kilos: "kg",
-    kilogramo: "kg",
-    kilogramos: "kg",
-    g: "g",
-    gr: "g",
-    gramo: "g",
-    gramos: "g",
-    l: "L",
-    lt: "L",
-    lts: "L",
-    litro: "L",
-    litros: "L",
-    ml: "ml",
-    pastilla: "pastillas",
-    pastillas: "pastillas",
-    tableta: "pastillas",
-    tabletas: "pastillas",
-    unidad: "unidades",
-    unidades: "unidades",
-    und: "unidades",
-    unds: "unidades",
-    u: "unidades"
-  };
-
-  return {
-    value,
-    unit: unitMap[rawUnit] || rawUnit
-  };
-}
+function parsePresentationQuantity(presentation) { return InventoryRules.parsePresentationQuantity(presentation); }
 
 function formatPhysicalTotal(group, value, unit = "unidades") {
   const absolute = Math.abs(value);
@@ -746,41 +630,9 @@ function createPhysicalOutputAllocations(product, preferredPresentation, group, 
   return pending <= 0.000001 ? allocations : null;
 }
 
-function getPreferredPhysicalUnit(info) {
-  const options = getPhysicalUnitOptions(info);
-  return options?.[0] || null;
-}
+function getPreferredPhysicalUnit(info) { return InventoryRules.getPreferredPhysicalUnit(info); }
 
-function getPhysicalUnitOptions(info) {
-  if (info.baseValue === null || info.baseValue <= 0) return null;
-
-  if (info.group === "volume") {
-    const options = [
-      { value: "physical:L", label: "litros", unit: "L", baseFactor: 1000 },
-      { value: "physical:ml", label: "ml", unit: "ml", baseFactor: 1 }
-    ];
-    return info.unit === "ml" ? options.reverse() : options;
-  }
-
-  if (info.group === "weight") {
-    const options = [
-      { value: "physical:kg", label: "kg", unit: "kg", baseFactor: 1000 },
-      { value: "physical:g", label: "gramos", unit: "g", baseFactor: 1 }
-    ];
-    return info.unit === "g" ? options.reverse() : options;
-  }
-
-  if (info.group === "units") {
-    return [{
-      value: `physical:${info.unit || "unidades"}`,
-      label: info.unit || "unidades",
-      unit: info.unit || "unidades",
-      baseFactor: 1
-    }];
-  }
-
-  return [];
-}
+function getPhysicalUnitOptions(info) { return InventoryRules.getPhysicalUnitOptions(info); }
 
 function getOutputQuantityOptions(product, presentation) {
   const options = [];
@@ -804,37 +656,10 @@ function getOutputQuantityOptions(product, presentation) {
   });
 }
 
-function getOutputQuantityConversion(product, presentation, quantity, mode) {
-  if (!String(mode || "").startsWith("physical")) {
-    return {
-      quantity,
-      usedQuantity: quantity,
-      usedUnit: product.unit,
-      quantityMode: "units",
-      allocations: [{
-        presentation,
-        quantity
-      }]
-    };
-  }
-
-  const info = getPresentationInfo(presentation);
-  const physicalUnit = mode === "physical"
-    ? getPreferredPhysicalUnit(info)
-    : (getPhysicalUnitOptions(info) || []).find((option) => option.value === mode);
-  if (!physicalUnit) return null;
-
-  return {
-    quantity: (quantity * physicalUnit.baseFactor) / info.baseValue,
-    usedQuantity: quantity,
-    usedUnit: physicalUnit.unit,
-    quantityMode: "physical",
-    physicalGroup: info.group,
-    baseQuantity: quantity * physicalUnit.baseFactor
-  };
-}
+function getOutputQuantityConversion(product, presentation, quantity, mode) { return InventoryRules.getOutputQuantityConversion(product, presentation, quantity, mode); }
 
 function formatOutputQuantity(output, product) {
+  if(output.dispatchId)return new Intl.NumberFormat('es-PE',{maximumFractionDigits:6}).format(output.usedQuantity)+' '+output.usedUnit;
   const quantity = output.usedQuantity ?? output.quantity;
   const unit = output.usedUnit || product?.unit || "";
   const total = [formatNumber.format(quantity), unit].filter(Boolean).join(" ");
@@ -1039,6 +864,7 @@ function resetPurchaseLines() {
 }
 
 function resetQuickProductForm() {
+  document.querySelector("#quick-product-request-category").value = "";
   document.querySelector("#quick-product-name").value = "";
   document.querySelector("#quick-product-active-ingredient").value = "";
   document.querySelector("#quick-product-category").value = "";
@@ -1062,6 +888,7 @@ async function saveQuickProduct() {
     name: document.querySelector("#quick-product-name").value.trim(),
     activeIngredient: document.querySelector("#quick-product-active-ingredient").value.trim(),
     category: document.querySelector("#quick-product-category").value.trim(),
+    requestCategory: document.querySelector("#quick-product-request-category").value,
     presentation: document.querySelector("#quick-product-presentation").value.trim(),
     unit: document.querySelector("#quick-product-unit").value,
     openingStock: 0,
@@ -1092,7 +919,7 @@ async function saveQuickProduct() {
   state.products.push(product);
 
   if (!(await saveState())) {
-    state.products = state.products.filter((item) => item.id !== product.id);
+
     return;
   }
 
@@ -1346,6 +1173,7 @@ function renderOutputTemplateOptions() {
 }
 
 function loadSelectedOutputTemplate() {
+  formDirty = true;
   const template = outputTemplates.find((item) => item.id === elements.outputTemplate.value);
   if (!template) {
     showToast("Seleccione un bloque guardado.");
@@ -1580,7 +1408,7 @@ function renderOutputs() {
           <td>${escapeHtml(output.reason)}</td>
           <td>${escapeHtml(output.responsible || "-")}</td>
           <td class="actions-cell">
-            <button class="icon-button danger" type="button" title="Eliminar salida" data-action="delete-output" data-id="${output.id}">Eliminar</button>
+            ${output.dispatchId ? '<span class="badge">Despacho confirmado</span>' : `<button class="icon-button danger" type="button" title="Eliminar salida" data-action="delete-output" data-id="${output.id}">Eliminar</button>`}
           </td>
         </tr>
       `;
@@ -1716,6 +1544,7 @@ function renderAll() {
 }
 
 function resetProductForm() {
+  document.querySelector("#product-request-category").value = "";
   productForm.reset();
   document.querySelector("#product-id").value = "";
   document.querySelector("#product-active-ingredient").value = "";
@@ -1732,6 +1561,7 @@ async function handleProductSubmit(event) {
     name: document.querySelector("#product-name").value.trim(),
     activeIngredient: document.querySelector("#product-active-ingredient").value.trim(),
     category: document.querySelector("#product-category").value,
+    requestCategory: document.querySelector("#product-request-category").value,
     presentation: document.querySelector("#product-presentation").value.trim(),
     unit: document.querySelector("#product-unit").value,
     openingStock: toNumber(document.querySelector("#product-opening-stock").value),
@@ -1753,7 +1583,7 @@ async function handleProductSubmit(event) {
     }
 
     Object.assign(product, data);
-    showToast("Producto actualizado.");
+
   } else {
     state.products.push({
       id: uid(),
@@ -1762,7 +1592,7 @@ async function handleProductSubmit(event) {
       expired: false,
       createdAt: new Date().toISOString()
     });
-    showToast("Producto guardado.");
+
   }
 
   if (!(await saveState())) return;
@@ -1966,6 +1796,7 @@ function editProduct(productId) {
   document.querySelector("#product-name").value = product.name;
   document.querySelector("#product-active-ingredient").value = product.activeIngredient || "";
   document.querySelector("#product-category").value = product.category;
+  document.querySelector("#product-request-category").value = product.requestCategory || "";
   document.querySelector("#product-presentation").value = product.presentation;
   document.querySelector("#product-unit").value = product.unit;
   document.querySelector("#product-opening-stock").value = product.openingStock;
@@ -2056,7 +1887,10 @@ async function deleteOutput(outputId) {
   showToast("Salida eliminada.");
 }
 
+window.JapurimaDispatchBridge={context:()=>({role:currentRole,username:currentUsername,csrfToken}),sync:()=>refreshStateFromServer()};
 function switchView(viewName) {
+  if (currentRole !== "ADMINISTRADOR" && ["products","purchases","outputs","users","reports"].includes(viewName)) viewName = "stock";
+  document.body.dataset.activeView=viewName;
   elements.navItems.forEach((item) => {
     item.classList.toggle("active", item.dataset.view === viewName);
   });
@@ -2066,6 +1900,7 @@ function switchView(viewName) {
     view.classList.toggle("active", isActive);
     if (isActive) elements.viewTitle.textContent = view.dataset.title;
   });
+  if(viewName==='dispatches')window.Dispatches?.opened();if(viewName==='reports')window.JapurimaReports?.opened();
 }
 
 function setMobileNav(open) {
@@ -2121,238 +1956,7 @@ function exportCsv() {
   showToast("CSV exportado.");
 }
 
-function escapeXml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function xlsxColumnName(index) {
-  let name = "";
-  let current = index;
-  while (current > 0) {
-    const remainder = (current - 1) % 26;
-    name = String.fromCharCode(65 + remainder) + name;
-    current = Math.floor((current - remainder) / 26);
-  }
-  return name;
-}
-
-function xlsxText(value, style = 0) {
-  return { type: "string", value, style };
-}
-
-function xlsxNumber(value) {
-  const number = Number(value || 0);
-  return {
-    type: "number",
-    value: Number((Number.isFinite(number) ? number : 0).toFixed(2)),
-    style: 1
-  };
-}
-
-function xlsxCellXml(cell, rowIndex, columnIndex) {
-  const value = cell && typeof cell === "object" && "value" in cell ? cell.value : cell;
-  const type = cell && typeof cell === "object" && cell.type ? cell.type : "string";
-  const style = cell && typeof cell === "object" && cell.style ? cell.style : 0;
-  const reference = `${xlsxColumnName(columnIndex + 1)}${rowIndex + 1}`;
-  const styleAttribute = style ? ` s="${style}"` : "";
-
-  if (value === "" || value === null || value === undefined) {
-    return `<c r="${reference}"${styleAttribute}/>`;
-  }
-
-  if (type === "number") {
-    return `<c r="${reference}" s="${style || 1}"><v>${value}</v></c>`;
-  }
-
-  const text = String(value);
-  const preserveSpace = /^\s|\s$/.test(text) ? ' xml:space="preserve"' : "";
-  return `<c r="${reference}" t="inlineStr"${styleAttribute}><is><t${preserveSpace}>${escapeXml(text)}</t></is></c>`;
-}
-
-function buildWorksheetXml(rows) {
-  const maxColumns = Math.max(1, ...rows.map((row) => row.length));
-  const lastCell = `${xlsxColumnName(maxColumns)}${Math.max(rows.length, 1)}`;
-  const columnWidths = [26, 26, 18, 22, 12, 12, 12, 12, 18, 12, 16];
-  const columns = columnWidths.map((width, index) => {
-    const column = index + 1;
-    return `<col min="${column}" max="${column}" width="${width}" customWidth="1"/>`;
-  }).join("");
-  const sheetRows = rows.map((row, rowIndex) => {
-    return `<row r="${rowIndex + 1}">${row.map((cell, columnIndex) => xlsxCellXml(cell, rowIndex, columnIndex)).join("")}</row>`;
-  }).join("");
-
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:${lastCell}"/>
-  <sheetViews><sheetView workbookViewId="0"/></sheetViews>
-  <sheetFormatPr defaultRowHeight="15"/>
-  <cols>${columns}</cols>
-  <sheetData>${sheetRows}</sheetData>
-</worksheet>`;
-}
-
-function buildWorkbookXml(sheetName) {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
-</workbook>`;
-}
-
-function buildXlsxStylesXml() {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <numFmts count="1"><numFmt numFmtId="164" formatCode="0.##"/></numFmts>
-  <fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts>
-  <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEAF3ED"/><bgColor indexed="64"/></patternFill></fill></fills>
-  <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD9E0D8"/></left><right style="thin"><color rgb="FFD9E0D8"/></right><top style="thin"><color rgb="FFD9E0D8"/></top><bottom style="thin"><color rgb="FFD9E0D8"/></bottom><diagonal/></border></borders>
-  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/></cellXfs>
-  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
-</styleSheet>`;
-}
-
-function crc32(bytes) {
-  const table = crc32.table || (crc32.table = Array.from({ length: 256 }, (_, index) => {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-    return value >>> 0;
-  }));
-  let crc = 0xffffffff;
-  bytes.forEach((byte) => {
-    crc = table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  });
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function pushUint16(target, value) {
-  target.push(value & 0xff, (value >>> 8) & 0xff);
-}
-
-function pushUint32(target, value) {
-  target.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
-}
-
-function getDosDateTime(date) {
-  return {
-    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
-    date: ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
-  };
-}
-
-function createZipBlob(files, type) {
-  const encoder = new TextEncoder();
-  const localParts = [];
-  const centralParts = [];
-  const records = [];
-  const modified = getDosDateTime(new Date());
-  let offset = 0;
-
-  files.forEach((file) => {
-    const nameBytes = encoder.encode(file.name);
-    const dataBytes = typeof file.content === "string" ? encoder.encode(file.content) : file.content;
-    const crc = crc32(dataBytes);
-    const header = [];
-    pushUint32(header, 0x04034b50);
-    pushUint16(header, 20);
-    pushUint16(header, 0);
-    pushUint16(header, 0);
-    pushUint16(header, modified.time);
-    pushUint16(header, modified.date);
-    pushUint32(header, crc);
-    pushUint32(header, dataBytes.length);
-    pushUint32(header, dataBytes.length);
-    pushUint16(header, nameBytes.length);
-    pushUint16(header, 0);
-    localParts.push(new Uint8Array(header), nameBytes, dataBytes);
-    records.push({ nameBytes, crc, size: dataBytes.length, offset });
-    offset += header.length + nameBytes.length + dataBytes.length;
-  });
-
-  const centralOffset = offset;
-  let centralSize = 0;
-  records.forEach((record) => {
-    const header = [];
-    pushUint32(header, 0x02014b50);
-    pushUint16(header, 20);
-    pushUint16(header, 20);
-    pushUint16(header, 0);
-    pushUint16(header, 0);
-    pushUint16(header, modified.time);
-    pushUint16(header, modified.date);
-    pushUint32(header, record.crc);
-    pushUint32(header, record.size);
-    pushUint32(header, record.size);
-    pushUint16(header, record.nameBytes.length);
-    pushUint16(header, 0);
-    pushUint16(header, 0);
-    pushUint16(header, 0);
-    pushUint16(header, 0);
-    pushUint32(header, 0);
-    pushUint32(header, record.offset);
-    centralParts.push(new Uint8Array(header), record.nameBytes);
-    centralSize += header.length + record.nameBytes.length;
-  });
-
-  const end = [];
-  pushUint32(end, 0x06054b50);
-  pushUint16(end, 0);
-  pushUint16(end, 0);
-  pushUint16(end, records.length);
-  pushUint16(end, records.length);
-  pushUint32(end, centralSize);
-  pushUint32(end, centralOffset);
-  pushUint16(end, 0);
-
-  return new Blob([...localParts, ...centralParts, new Uint8Array(end)], { type });
-}
-
-function createXlsxBlob(rows, sheetName = "Existencias") {
-  const safeSheetName = String(sheetName || "Hoja1").replace(/[\\/?*[\]:]/g, " ").slice(0, 31) || "Hoja1";
-  const createdAt = new Date().toISOString();
-  const files = [
-    {
-      name: "[Content_Types].xml",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`
-    },
-    {
-      name: "_rels/.rels",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`
-    },
-    {
-      name: "docProps/app.xml",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>JAPURIMA</Application></Properties>`
-    },
-    {
-      name: "docProps/core.xml",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>JAPURIMA</dc:creator><cp:lastModifiedBy>JAPURIMA</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:modified></cp:coreProperties>`
-    },
-    {
-      name: "xl/workbook.xml",
-      content: buildWorkbookXml(safeSheetName)
-    },
-    {
-      name: "xl/_rels/workbook.xml.rels",
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`
-    },
-    {
-      name: "xl/styles.xml",
-      content: buildXlsxStylesXml()
-    },
-    {
-      name: "xl/worksheets/sheet1.xml",
-      content: buildWorksheetXml(rows)
-    }
-  ];
-
-  return createZipBlob(files, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-}
+const {createXlsxBlob,xlsxText,xlsxNumber}=JapurimaXlsx;
 
 function exportStockExcel() {
   const { rows, dateRange } = getStockFilterContext();
@@ -2484,6 +2088,23 @@ function handleTableAction(event) {
 function bindEvents() {
   if (appEventsBound) return;
   appEventsBound = true;
+  [productForm,purchaseForm,outputForm].forEach(form => form.addEventListener('input', () => { formDirty = true; }));
+  document.addEventListener('submit', event => {
+    if (event.target.matches('#product-form,#purchase-form,#output-form') && (currentRole !== 'ADMINISTRADOR' || pendingSave || pendingOperation || isSyncing)) {
+      event.preventDefault(); event.stopImmediatePropagation(); showToast('Operacion bloqueada: revise permisos o la copia pendiente.');
+    }
+  }, true);
+  document.addEventListener('click', event => {
+    const mutation = event.target.closest('button[data-action],#save-quick-product');
+    if (mutation && (currentRole !== 'ADMINISTRADOR' || pendingSave || pendingOperation || isSyncing)) { event.preventDefault(); event.stopImmediatePropagation(); showToast('Operacion bloqueada: revise permisos o la copia pendiente.'); }
+  }, true);
+  document.querySelector('#pending-download').addEventListener('click', downloadPending);
+  document.querySelector('#pending-retry').addEventListener('click', async () => { if (await saveState(true)) { renderAll(); applyRole(); } });
+  document.querySelector('#pending-reload').addEventListener('click', async () => {
+    if (pendingSave) return;
+    downloadPending();
+    if (await loadState()) { rememberPending(null); formDirty=false; renderAll(); applyRole(); showToast('Inventario actualizado. La copia pendiente fue descargada para conciliacion manual.'); }
+  });
 
   elements.moduleToggle.addEventListener("click", () => {
     setMobileNav(!elements.sidebar.classList.contains("nav-open"));
@@ -2602,7 +2223,11 @@ function bindEvents() {
   elements.exportPurchasesExcel.addEventListener("click", exportPurchasesExcel);
   elements.exportOutputsExcel.addEventListener("click", exportOutputsExcel);
   elements.exportStockExcel.addEventListener("click", exportStockExcel);
-  elements.logoutButton.addEventListener("click", handleLogout);
+  elements.logoutButton.addEventListener('click', async () => {
+    if (pendingSave) return;
+    if (pendingOperation) downloadPending();
+    try { await handleLogout(); currentRole=''; csrfToken=''; } catch (error) { showToast(error.message); }
+  });
   document.querySelector("#print-purchases").addEventListener("click", () => printView("purchases"));
   document.querySelector("#print-outputs").addEventListener("click", () => printView("outputs"));
   document.querySelector("#print-stock").addEventListener("click", () => printView("stock"));
@@ -2625,6 +2250,8 @@ async function startApp() {
   bindEvents();
   renderAll();
   showApp();
+  applyRole();
+  try { const saved = sessionStorage.getItem(recoveryKey()); if (saved) rememberPending(JSON.parse(saved)); } catch { showToast('No se pudo recuperar la copia pendiente.'); }
   startAutoSync();
 }
 

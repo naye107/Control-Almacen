@@ -1,456 +1,112 @@
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const crypto = require("crypto");
-
-const ROOT_DIR = __dirname;
-const DATA_DIR = path.resolve(process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(ROOT_DIR, "data"));
-const DATA_FILE = path.join(DATA_DIR, "inventory.json");
-const DATABASE_URL = process.env.DATABASE_URL || "";
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
-const HOST = process.env.HOST || "0.0.0.0";
-const PORT = Number(process.env.PORT || 8080);
-const MAX_BODY_SIZE = 1024 * 1024;
-const APP_USER = process.env.APP_USER || "admin";
-const APP_PASSWORD = process.env.APP_PASSWORD || "admin123";
-const SESSION_COOKIE = "japurima_session";
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
-const sessions = new Map();
-let pgPool = null;
-let stateCache = null;
-let stateRevision = "";
-
-const MIME_TYPES = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon"
-};
-
-function defaultState() {
-  return { products: [], purchases: [], outputs: [] };
+'use strict';
+const http = require('node:http');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const { AppError, requireRole } = require('./src/errors');
+const { FileStore, PostgresStore } = require('./src/store');
+const { Services } = require('./src/services');
+const { digest, equal, safeUser } = require('./src/security');
+const ROOT = __dirname;
+const COOKIE = 'japurima_session';
+function cookieHash(req) { const value=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(COOKIE+'=')); if(!value)return null;try{return digest(decodeURIComponent(value.slice(COOKIE.length+1)));}catch{return null;} }
+function cookie(token,secure) {return `${COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token?43200:0}${secure?'; Secure':''}`;}
+async function body(req) {
+ if(!String(req.headers['content-type']||'').startsWith('application/json'))throw new AppError(415,'JSON_REQUIRED');
+ let bytes=0;const chunks=[];
+ for await(const chunk of req){bytes+=chunk.length;if(bytes>1024*1024)throw new AppError(413,'BODY_TOO_LARGE');chunks.push(chunk);}
+ let value;try {value=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new AppError(400,'INVALID_JSON');}
+ if(!value || typeof value!=='object' || Array.isArray(value))throw new AppError(400,'JSON_OBJECT_REQUIRED');return value;
 }
-
-function ensureDataFile() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-
-  if (!fs.existsSync(DATA_FILE)) {
-    writeStateFile(defaultState());
-  }
-}
-
-function normalizeProduct(product) {
-  if (!product || typeof product !== "object") return product;
-
-  return {
-    ...product,
-    unit: product.unit === "bidones" ? "galones" : product.unit
-  };
-}
-
-function normalizeState(value) {
-  return {
-    products: Array.isArray(value?.products) ? value.products.map(normalizeProduct) : [],
-    purchases: Array.isArray(value?.purchases) ? value.purchases : [],
-    outputs: Array.isArray(value?.outputs) ? value.outputs : []
-  };
-}
-
-function updateStateCache(nextState, revision = "") {
-  stateCache = normalizeState(nextState);
-  stateRevision = revision || new Date().toISOString();
-  return stateCache;
-}
-
-function shouldUseDatabaseSsl() {
-  if (!DATABASE_URL) return false;
-  if (DATABASE_URL.includes("sslmode=disable")) return false;
-  return !/localhost|127\.0\.0\.1/i.test(DATABASE_URL);
-}
-
-function getPgPool() {
-  if (!DATABASE_URL) return null;
-  if (pgPool) return pgPool;
-
-  const { Pool } = require("pg");
-  pgPool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: shouldUseDatabaseSsl() ? { rejectUnauthorized: false } : false,
-    enableChannelBinding: /channel_binding=require/i.test(DATABASE_URL),
-    connectionTimeoutMillis: 10000
-  });
-
-  return pgPool;
-}
-
-async function ensurePostgresState() {
-  const pool = getPgPool();
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS inventory_state (
-      id integer PRIMARY KEY,
-      data jsonb NOT NULL,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-  await pool.query(`
-    INSERT INTO inventory_state (id, data)
-    VALUES (1, $1::jsonb)
-    ON CONFLICT (id) DO NOTHING
-  `, [JSON.stringify(defaultState())]);
-}
-
-async function ensureStorage() {
-  if (DATABASE_URL) {
-    await ensurePostgresState();
-    return;
-  }
-
-  if (IS_PRODUCTION) {
-    throw new Error("DATABASE_URL es obligatorio en produccion para no perder datos al desplegar.");
-  }
-
-  ensureDataFile();
-}
-
-function readStateFile() {
-  ensureDataFile();
-
+function createServer({store,services,production=false,publicOrigin='',trustProxy=false}) {
+ const limits=new Map();
+ function rate(req,group,max=20) {
+  const ip=trustProxy?String(req.headers['x-forwarded-for']||req.socket.remoteAddress).split(',').pop().trim():req.socket.remoteAddress;
+  const key=group+':'+ip;const now=Date.now();const current=limits.get(key);
+  if(!current||current.until<=now){limits.set(key,{count:1,until:now+60000});}else if(++current.count>max)throw new AppError(429,'RATE_LIMIT');
+  if(limits.size>10000)for(const [k,v] of limits)if(v.until<=now)limits.delete(k);
+ }
+ const server=http.createServer(async(req,res)=>{
+  const sendFile=(bytes,name,type,headers={})=>{res.writeHead(200,{'Content-Type':type,'Content-Disposition':'attachment; filename="'+name+'"','Cache-Control':'private, no-store','Content-Length':bytes.length,...headers});res.end(bytes);};
+  const json=(status,payload,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(payload));};
+  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
+  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  if(production)res.setHeader('Strict-Transport-Security','max-age=31536000');
   try {
-    const raw = fs.readFileSync(DATA_FILE, "utf8");
-    return normalizeState(JSON.parse(raw));
-  } catch {
-    return defaultState();
-  }
-}
-
-function writeStateFile(nextState) {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-
-  const normalized = normalizeState(nextState);
-  const tempFile = `${DATA_FILE}.tmp`;
-  fs.writeFileSync(tempFile, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
-  fs.renameSync(tempFile, DATA_FILE);
-}
-
-async function readState() {
-  if (stateCache) return stateCache;
-
-  if (DATABASE_URL) {
-    const pool = getPgPool();
-    const result = await pool.query("SELECT data, updated_at FROM inventory_state WHERE id = 1");
-    const row = result.rows[0] || {};
-    const revision = row.updated_at ? new Date(row.updated_at).toISOString() : "";
-    return updateStateCache(row.data || defaultState(), revision);
-  }
-
-  return updateStateCache(readStateFile());
-}
-
-async function readStateMeta() {
-  if (!stateCache) await readState();
-  return { revision: stateRevision };
-}
-
-async function writeState(nextState) {
-  const normalized = normalizeState(nextState);
-
-  if (DATABASE_URL) {
-    const pool = getPgPool();
-    const result = await pool.query(`
-      INSERT INTO inventory_state (id, data, updated_at)
-      VALUES (1, $1::jsonb, now())
-      ON CONFLICT (id)
-      DO UPDATE SET data = EXCLUDED.data, updated_at = now()
-      RETURNING updated_at
-    `, [JSON.stringify(normalized)]);
-    const revision = result.rows[0]?.updated_at ? new Date(result.rows[0].updated_at).toISOString() : "";
-    updateStateCache(normalized, revision);
-    return;
-  }
-
-  writeStateFile(normalized);
-  updateStateCache(normalized);
-}
-
-function sendJson(response, statusCode, payload, extraHeaders = {}) {
-  response.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    ...extraHeaders
-  });
-  response.end(JSON.stringify(payload));
-}
-
-function safeCompare(left, right) {
-  const leftBuffer = Buffer.from(String(left));
-  const rightBuffer = Buffer.from(String(right));
-
-  if (leftBuffer.length !== rightBuffer.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function parseCookies(request) {
-  const header = request.headers.cookie || "";
-  return header.split(";").reduce((cookies, item) => {
-    const separatorIndex = item.indexOf("=");
-    if (separatorIndex === -1) return cookies;
-
-    const key = item.slice(0, separatorIndex).trim();
-    const value = item.slice(separatorIndex + 1).trim();
-    cookies[key] = decodeURIComponent(value);
-    return cookies;
-  }, {});
-}
-
-function isSecureRequest(request) {
-  return request.headers["x-forwarded-proto"] === "https" || Boolean(request.socket.encrypted);
-}
-
-function sessionCookie(token, request) {
-  const secure = isSecureRequest(request) ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
-}
-
-function clearSessionCookie(request) {
-  const secure = isSecureRequest(request) ? "; Secure" : "";
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
-}
-
-function createSession(user) {
-  const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, {
-    user,
-    expiresAt: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
-  });
-  return token;
-}
-
-function getSession(request) {
-  const token = parseCookies(request)[SESSION_COOKIE];
-  if (!token) return null;
-
-  const session = sessions.get(token);
-  if (!session) return null;
-
-  if (session.expiresAt <= Date.now()) {
-    sessions.delete(token);
-    return null;
-  }
-
-  return { token, ...session };
-}
-
-function destroySession(request) {
-  const token = parseCookies(request)[SESSION_COOKIE];
-  if (token) sessions.delete(token);
-}
-
-function isLoginValid(user, password) {
-  return safeCompare(user, APP_USER) && safeCompare(password, APP_PASSWORD);
-}
-
-function readJsonBody(request) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-
-    request.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > MAX_BODY_SIZE) {
-        reject(new Error("BODY_TOO_LARGE"));
-        request.destroy();
-      }
-    });
-
-    request.on("end", () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch {
-        reject(new Error("INVALID_JSON"));
-      }
-    });
-
-    request.on("error", reject);
-  });
-}
-
-async function handleApi(request, response) {
-  if (request.method === "GET" && request.url === "/api/health") {
-    sendJson(response, 200, {
-      ok: true,
-      storage: DATABASE_URL ? "postgres" : "file"
-    });
-    return true;
-  }
-
-  if (request.method === "GET" && request.url === "/api/session") {
-    const session = getSession(request);
-    sendJson(response, 200, {
-      authenticated: Boolean(session),
-      user: session?.user || null
-    });
-    return true;
-  }
-
-  if (request.method === "POST" && request.url === "/api/login") {
-    try {
-      const payload = await readJsonBody(request);
-      const user = String(payload.user || "");
-      const password = String(payload.password || "");
-
-      if (!isLoginValid(user, password)) {
-        sendJson(response, 401, { ok: false, error: "INVALID_LOGIN" });
-        return true;
-      }
-
-      const token = createSession(user);
-      sendJson(response, 200, { ok: true, user }, {
-        "Set-Cookie": sessionCookie(token, request)
-      });
-    } catch {
-      sendJson(response, 400, { ok: false, error: "INVALID_JSON" });
+   const url=new URL(req.url,'http://localhost');const route=url.pathname;const hash=cookieHash(req);
+   if(!['GET','HEAD','POST','PATCH'].includes(req.method))throw new AppError(405,'METHOD_NOT_ALLOWED');
+   if(['POST','PATCH'].includes(req.method)) {
+    const origin=req.headers.origin;const expected=publicOrigin||`http://${req.headers.host}`;
+    if(origin&&origin!==expected)throw new AppError(403,'ORIGIN_REJECTED');
+    if(req.headers['sec-fetch-site']==='cross-site')throw new AppError(403,'ORIGIN_REJECTED');
+   }
+   if(route==='/api/health'&&req.method==='GET') {json(200,{ok:true});return;}
+   if(route==='/api/login'&&req.method==='POST') {
+    rate(req,'login',10);const input=await body(req);const result=await services.login(input.user,input.password,hash);
+    json(200,{ok:true,user:result.user,csrfToken:result.csrfToken},{'Set-Cookie':cookie(result.token,production)});return;
+   }
+   if(route==='/api/session'&&req.method==='GET') {const session=await services.session(hash);json(200,session?{authenticated:true,user:session.user.username,role:session.user.role,csrfToken:session.csrfToken}:{authenticated:false});return;}
+   if(route==='/api/public/catalog'&&req.method==='GET') {
+    rate(req,'catalog',120);json(200,await services.requests.catalog(url.searchParams.get('category')||undefined));return;
+   }
+   if(route==='/api/public/requests'&&req.method==='POST') {rate(req,'request',10);json(201,await services.registerRequest(await body(req)));return;}
+   if(route==='/api/public/requests/status'&&req.method==='POST') {rate(req,'lookup',20);const input=await body(req);if(!input||typeof input!=='object'||Array.isArray(input))throw new AppError(422,'INVALID_REQUEST_FIELDS');json(200,await services.lookupRequest(input.code,input.privateKey));return;}
+   if(route==='/api/public/requests/pdf'&&req.method==='POST'){rate(req,'public-document',20);const d=await services.documents.publicRequest(await body(req));sendFile(d.pdf,d.filename,'application/pdf',{'X-Document-SHA256':d.sha256});return;}
+   if(route.startsWith('/api/')) {
+    const session=await services.authenticated(hash);
+    if(['POST','PATCH'].includes(req.method)&&!equal(req.headers['x-csrf-token']||'',session.csrfToken))throw new AppError(403,'CSRF_REJECTED');
+    if(route==='/api/logout'&&req.method==='POST') {await store.transact(async tx=>{await tx.revokeSessions(null,hash);await tx.audit({actorId:session.user.id,action:'LOGOUT'});});json(200,{ok:true},{'Set-Cookie':cookie('',production)});return;}
+    if(route==='/api/state'&&req.method==='GET') {
+     const inventory=await store.transact(tx=>tx.getInventory());
+     const state=session.user.role==='ADMINISTRADOR'?inventory.state:{products:inventory.state.products,purchases:inventory.state.purchases.map(p=>({id:p.id,productId:p.productId,date:p.date,presentation:p.presentation,quantity:p.quantity})),outputs:inventory.state.outputs.map(o=>({id:o.id,productId:o.productId,date:o.date,presentation:o.presentation,quantity:o.quantity,allocations:o.allocations,usedQuantity:o.usedQuantity,usedUnit:o.usedUnit,quantityMode:o.quantityMode,reason:o.reason,destination:o.destination,dispatchId:o.dispatchId,dispatchCode:o.dispatchCode}))};
+     json(200,state,{'X-State-Revision':inventory.version});return;
     }
-    return true;
-  }
-
-  if (request.method === "POST" && request.url === "/api/logout") {
-    destroySession(request);
-    sendJson(response, 200, { ok: true }, {
-      "Set-Cookie": clearSessionCookie(request)
-    });
-    return true;
-  }
-
-  if (request.url.startsWith("/api/") && !getSession(request)) {
-    sendJson(response, 401, { ok: false, error: "UNAUTHORIZED" });
-    return true;
-  }
-
-  if (request.method === "GET" && request.url === "/api/state") {
-    const currentState = await readState();
-    sendJson(response, 200, currentState, { "X-State-Revision": stateRevision });
-    return true;
-  }
-
-  if (request.method === "GET" && request.url === "/api/state-meta") {
-    sendJson(response, 200, await readStateMeta());
-    return true;
-  }
-
-  if (request.method === "POST" && request.url === "/api/state") {
-    try {
-      const payload = await readJsonBody(request);
-      await writeState(payload);
-      sendJson(response, 200, { ok: true, revision: stateRevision });
-    } catch (error) {
-      const statusCode = error.message === "BODY_TOO_LARGE" ? 413 : 400;
-      sendJson(response, statusCode, { ok: false, error: error.message });
+    if(route==='/api/state-meta'&&req.method==='GET') {const i=await store.transact(tx=>tx.getInventory());json(200,{revision:i.version});return;}
+    if(route==='/api/state'&&req.method==='POST') {requireRole(session.user,'ADMINISTRADOR');json(200,await services.inventoryWrite(hash,await body(req),req.headers['x-state-revision'],req.headers['x-operation-id']));return;}
+    if(route==='/api/users') {
+     requireRole(session.user,'ADMINISTRADOR');
+     if(req.method==='GET'){json(200,await store.transact(async tx=>(await tx.listUsers()).map(safeUser)));return;}
+     if(req.method==='POST'){json(201,await services.createUser(await body(req),hash));return;}
     }
-    return true;
+    if(route.startsWith('/api/users/')&&req.method==='PATCH'){requireRole(session.user,'ADMINISTRADOR');json(200,await services.updateUser(hash,route.slice('/api/users/'.length),await body(req)));return;}
+    if(route==='/api/audit'&&req.method==='GET'){requireRole(session.user,'ADMINISTRADOR');json(200,await store.transact(tx=>tx.listAudit()));return;}
+    if(/^\/api\/documents\/(requests|dispatches)\/[a-f0-9-]+\/pdf$/i.test(route)&&req.method==='GET'){rate(req,'internal-document',60);const parts=route.split('/');const d=await services.documents.document(parts[3]==='requests'?'REQUEST':'DISPATCH',parts[4],{hash});sendFile(d.pdf,d.filename,'application/pdf',{'X-Document-SHA256':d.sha256});return;}
+    if(route==='/api/reports'&&req.method==='GET'){requireRole(session.user,'ADMINISTRADOR');rate(req,'reports',30);json(200,await services.reports.list(hash,Object.fromEntries(url.searchParams)));return;}
+    if(route==='/api/reports/excel'&&req.method==='GET'){requireRole(session.user,'ADMINISTRADOR');rate(req,'report-export',10);const d=await services.reports.excel(hash,Object.fromEntries(url.searchParams));sendFile(d.buffer,d.filename,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');return;}
+    if(route==='/api/dispatch-requests'&&req.method==='GET'){json(200,await services.dispatches.list(hash,Object.fromEntries(url.searchParams)));return;}
+    if(/^\/api\/dispatch-requests\/[a-f0-9-]+$/i.test(route)&&req.method==='GET'){json(200,await services.dispatches.detail(hash,route.split('/').pop()));return;}
+    if(route==='/api/dispatches'&&req.method==='POST'){rate(req,'dispatch',60);json(201,await services.dispatches.confirmation(hash,await body(req)));return;}
+    if(/^\/api\/dispatches\/[a-f0-9-]+$/i.test(route)&&req.method==='GET'){json(200,await services.dispatches.receipt(hash,route.split('/').pop()));return;}
+    if(route==='/api/requests'&&req.method==='GET'){json(200,await store.transact(async tx=>(await tx.listRequests()).map(r=>({id:r.id,code:r.code,requester:r.requester,destination:r.destination,status:require('./src/request-service').publicRequest(r).status,createdAt:r.createdAt,category:r.category,requestVersion:r.requestVersion,crop:r.crop,applicationMode:r.applicationMode,containerCount:r.containerCount,items:r.items}))));return;}
+    throw new AppError(404,'NOT_FOUND');
+   }
+   if(!['GET','HEAD'].includes(req.method))throw new AppError(405,'METHOD_NOT_ALLOWED');
+   const requested=route==='/'?'public.html':decodeURIComponent(route).replace(/^\/+/, '');
+   const allowed=['index.html','app.js','styles.css','users.js','public.html','public.js','shared/inventory-rules.js','shared/request-rules.js','public.css','dispatches.js','dispatches.css','shared/dispatch-rules.js','shared/xlsx-writer.js','documents.js','reports.js','reports.css'];
+   const file=path.resolve(ROOT,requested);const relative=path.relative(ROOT,file).split(path.sep).join('/');
+   if(relative.startsWith('../')||path.isAbsolute(relative)||(!allowed.includes(relative)&&!/^assets\/[a-zA-Z0-9 ._-]+\.(png|jpg|jpeg|webp|svg|ico)$/.test(relative)))throw new AppError(403,'FORBIDDEN');
+   const data=await fs.readFile(file).catch(e=>{if(e.code==='ENOENT')throw new AppError(404,'NOT_FOUND');throw e;});
+   const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml'};
+   res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(req.method==='HEAD'?undefined:data);
+  } catch(error) {
+   if(!error.status)console.error('Error interno:',error.code||error.name);
+   if(!res.headersSent)json(error.status||500,{ok:false,error:error.status?error.code:'INTERNAL_ERROR'});else res.end();
   }
-
-  if (request.url.startsWith("/api/")) {
-    sendJson(response, 404, { ok: false, error: "NOT_FOUND" });
-    return true;
-  }
-
-  return false;
+ });
+ server.requestTimeout=30000;server.headersTimeout=15000;
+ return server;
 }
-
-function serveStatic(request, response) {
-  const requestUrl = new URL(request.url, `http://${request.headers.host}`);
-  const requestedPath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
-  const decodedPath = decodeURIComponent(requestedPath);
-  const safePath = decodedPath.replace(/^\/+/, "");
-  const filePath = path.resolve(ROOT_DIR, safePath);
-  const relativePath = path.relative(ROOT_DIR, filePath);
-  const publicPath = relativePath.split(path.sep).join("/");
-  const isPublicAsset = publicPath.startsWith("assets/");
-  const isPublicFile = ["index.html", "app.js", "styles.css"].includes(publicPath) || isPublicAsset;
-
-  if (relativePath.startsWith("..") || path.isAbsolute(relativePath) || !isPublicFile) {
-    response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
-    response.end("Acceso denegado");
-    return;
-  }
-
-  fs.stat(filePath, (statError, stats) => {
-    if (statError || !stats.isFile()) {
-      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      response.end("No encontrado");
-      return;
-    }
-
-    const extension = path.extname(filePath).toLowerCase();
-    response.writeHead(200, {
-      "Content-Type": MIME_TYPES[extension] || "application/octet-stream",
-      "Cache-Control": [".html", ".css", ".js"].includes(extension) ? "no-store" : "public, max-age=300"
-    });
-    fs.createReadStream(filePath).pipe(response);
-  });
+async function main() {
+ const production=process.env.NODE_ENV==='production';
+ if(production&&(!process.env.DATABASE_URL||!process.env.PUBLIC_ORIGIN?.startsWith('https://')))throw new Error('DATABASE_URL y PUBLIC_ORIGIN HTTPS son obligatorios en produccion');
+ const store=process.env.DATABASE_URL?new PostgresStore(process.env.DATABASE_URL):new FileStore(process.env.DATA_DIR||path.join(ROOT,'data'));
+ try { await store.init(); } catch(error) { await store.close().catch(()=>{}); throw error; }
+ const services=new Services(store);try { await services.init(); } catch(error) { await store.close(); throw error; }
+ const server=createServer({store,services,production,publicOrigin:process.env.PUBLIC_ORIGIN||'',trustProxy:process.env.TRUST_PROXY==='1'});
+ server.on('error', async error => { console.error(error.code || 'SERVER_ERROR'); await store.close(); process.exitCode=1; });
+ server.listen(Number(process.env.PORT||8080),process.env.HOST||'0.0.0.0',()=>console.log('JAPURIMA iniciado. Sin usuarios predeterminados. Consulte docs/FASE1.md.'));
+ let stopping=false;
+ const stop=()=>{if(stopping)return;stopping=true;server.close(async()=>{await store.close();process.exit(0);});};
+ process.on('SIGINT',stop);process.on('SIGTERM',stop);
 }
-
-function getNetworkUrls() {
-  const urls = [`http://localhost:${PORT}`];
-  const networks = os.networkInterfaces();
-
-  Object.values(networks).forEach((items = []) => {
-    items.forEach((item) => {
-      if (item.family === "IPv4" && !item.internal) {
-        urls.push(`http://${item.address}:${PORT}`);
-      }
-    });
-  });
-
-  return urls;
-}
-
-const server = http.createServer(async (request, response) => {
-  const handled = await handleApi(request, response);
-  if (!handled) serveStatic(request, response);
-});
-
-server.on("error", (error) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(`El puerto ${PORT} ya esta en uso.`);
-    console.error("Cierre otra ventana del servidor JAPURIMA o reinicie la computadora.");
-    return;
-  }
-
-  console.error("No se pudo iniciar el servidor.");
-  console.error(error.message);
-});
-
-function storageDescription() {
-  return DATABASE_URL ? "PostgreSQL (DATABASE_URL)" : DATA_FILE;
-}
-
-ensureStorage().then(() => {
-  server.listen(PORT, HOST, () => {
-    console.log("Sistema JAPURIMA iniciado.");
-    console.log("NO cierre esta ventana mientras use el sistema.");
-    console.log("");
-    console.log(`Datos: ${storageDescription()}`);
-    console.log(`Login: usuario "${APP_USER}". Configure APP_USER y APP_PASSWORD para cambiarlo.`);
-    console.log("");
-    console.log("Abra una de estas direcciones en el navegador:");
-    getNetworkUrls().forEach((url) => console.log(`  ${url}`));
-  });
-}).catch((error) => {
-  console.error("No se pudo iniciar el almacenamiento de datos.");
-  console.error(error.message);
-  process.exit(1);
-});
+if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});
+module.exports={createServer,body,cookieHash};

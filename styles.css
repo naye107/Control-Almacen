@@ -918,3 +918,17 @@ tr:last-child td {
     border: 0;
   }
 }
+/* Fase 1: reuse the existing identity and responsive controls. */
+.public-content { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.public-logo { width: 180px; max-width: 100%; }
+.public-content .panel { margin: 20px 0; }
+body[data-role="ALMACENERO"] #view-products,
+body[data-role="ALMACENERO"] #view-purchases,
+body[data-role="ALMACENERO"] #view-outputs,
+body[data-role="ALMACENERO"] #view-users,
+body[data-role="ALMACENERO"] button[data-action] { display: none !important; }
+#pending-panel { border: 2px solid var(--warning, #c68b1b); margin-bottom: 16px; }
+#pending-panel button { margin: 6px 4px 6px 0; }
+#users-table td { vertical-align: top; }
+#users-table input { max-width: 220px; }
+@media (max-width: 700px) { .public-content { padding: 16px; } }

@@ -1,37 +1,45 @@
-# JAPURIMA
+# JAPURIMA — Sistema integrado de almacén, Fase 4
 
-Sistema web simple para controlar fertilizantes en almacen.
+Aplicación web responsiva con HTML, CSS, JavaScript, Node.js >=20 y PostgreSQL.
+Mantiene productos, compras, salidas, existencias, Kardex, impresión y exportaciones CSV/XLSX.
 
-## Modulos
+La Fase 1 incorpora usuarios ADMINISTRADOR/ALMACENERO, sesiones persistentes, autorización,
+CSRF, inventario validado en servidor, concurrencia e idempotencia, auditoría y esquema relacional
+para solicitudes/despachos. La Fase 2 incorpora el registro público por categorías, dosis, cantidades exactas y seguimiento privado. La Fase 3 incorpora despachos parciales y completos con salidas atómicas, control de concurrencia, comprobantes y seguimiento de cantidades entregadas. Registrar solicitudes no reserva ni descuenta stock.
 
-- Productos: nombre comercial, materia activa, categoria, presentacion, unidad, stock inicial y stock minimo.
-- Compras: registra entradas por proveedor, cantidad, lote y documento.
-- Salidas: registra egresos por destino, cantidad, motivo y responsable.
-- Existencias: muestra stock actual, alertas y kardex.
+No existen cuentas o contraseñas predeterminadas. El modo `file:` no autentica; use Node.js.
 
-## Uso en una computadora
+## Desarrollo local
 
-1. Abra `iniciar-sistema.bat`.
-2. Se abrira una ventana llamada `JAPURIMA Servidor`. Deje esa ventana abierta.
-3. El navegador debe abrir `http://localhost:8080` automaticamente.
+1. Instale Node.js >=20 con npm y abra una terminal en esta carpeta.
+2. Para Fase 4, prepare exclusivamente PostgreSQL de desarrollo; consulte los comandos de migración y permisos en [docs/FASE4.md](docs/FASE4.md). No use una conexión de producción.
+3. Ejecute `npm ci`, `npm run check` y `npm run test:documents` para las pruebas integrales con PostgreSQL y Chrome.
+4. Configure DATABASE_URL de desarrollo y, si no existe un administrador, ejecute `npm run create-admin` e introduzca usuario y contraseña privada.
+5. Ejecute `npm start`. Abra http://localhost:8080. El almacén protegido está en `/index.html`.
 
-La informacion se guarda en `data/inventory.json`, dentro de esta carpeta del sistema.
+Para usar solo el runtime Node ya disponible: `node scripts/check.cjs`,
+`node scripts/test.cjs`, `node scripts/create-admin.cjs` y `node server.js`.
 
-Usuario local por defecto:
+El almacenamiento local Fase 1 usa `data/phase1.json` con inventario, usuarios, sesiones y auditoría.
+La primera inicialización copia el inventario legado sin modificar `data/inventory.json`.
+PostgreSQL conserva `inventory_state.data` y agrega tablas mediante una migración explícita.
 
-- Usuario: `admin`
-- Clave: `admin123`
+Consulte [docs/FASE1.md](docs/FASE1.md) para configuración, instalación, migración, respaldo,
+restauración, restricciones y pruebas. Consulte [PUBLICAR.md](PUBLICAR.md) antes de cualquier publicación.
 
-## Uso desde celular u otra computadora
+La portada pública está en `/`; el almacén protegido sigue en `/index.html`.
+Los productos se habilitan expresamente mediante «Clasificación para solicitudes» en Productos.
+Consulte [docs/FASE2.md](docs/FASE2.md) para probar con una copia local, ejecutar las pruebas
+PostgreSQL/navegador y aplicar `002_public_requests.sql` exclusivamente en desarrollo.
+Consulte [docs/INFORME_FASE2.md](docs/INFORME_FASE2.md) para resultados, evidencias y pendientes.
 
-1. La computadora que ejecuta `iniciar-sistema.bat` y los demas equipos deben estar en la misma red WiFi.
-2. En el celular o computadora, abra la direccion de red que aparece en la ventana `JAPURIMA Servidor`, por ejemplo `http://192.168.1.20:8080`.
-3. Si Windows pregunta por permiso de red para Node.js, permita el acceso en redes privadas.
+Consulte [docs/FASE3.md](docs/FASE3.md) para activar y probar Despachos en PostgreSQL local,
+gestionar reintentos y recuperar el respaldo verificado. El informe de esta entrega está en
+[docs/INFORME_FASE3.md](docs/INFORME_FASE3.md), con resultados de 44 pruebas, evidencias visuales,
+archivos modificados, riesgos y límites de validación. No se incluye Fase 4 ni despliegue automático.
 
-Si el sistema esta publicado en Render, todos deben entrar con la misma URL publica de Render. Los cambios se sincronizan automaticamente cada pocos segundos; tambien puede actualizar la pagina para verlos al instante.
-
-En Render, los datos se guardan en PostgreSQL mediante `DATABASE_URL`.
-
-## Nota
-
-Para entrar desde fuera del local o desde cualquier internet, publique el sistema siguiendo [PUBLICAR.md](PUBLICAR.md).
+La Fase 4 agrega PDFs A4 persistidos y reportes exclusivos de ADMINISTRADOR, con filtros y XLSX.
+Los PDF públicos no incluyen la clave de seguimiento; el TXT previo sigue siendo privado.
+Consulte [docs/FASE4.md](docs/FASE4.md) para activación local, pruebas y recuperación;
+[docs/INFORME_FASE4.md](docs/INFORME_FASE4.md) detalla resultados, capacidad y limitaciones.
+La migración 004 se ejecutó únicamente sobre PostgreSQL aislado de pruebas. No se incluye Fase 5.

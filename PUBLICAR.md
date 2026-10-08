@@ -1,66 +1,20 @@
-# Publicar JAPURIMA en Render
+# Publicación y activación — Fase 1
 
-Para usar el sistema desde cualquier lugar necesita publicarlo en un hosting con URL publica.
+No se ha realizado ningún despliegue ni migración de producción. Publicar requiere autorización adicional.
+`render.yaml` es configuración preparada; no ejecuta migraciones al iniciar.
 
-## Opcion recomendada: Render
+Antes de publicar:
 
-El proyecto ya incluye `render.yaml`, que crea:
+1. Validar la versión en una base PostgreSQL de desarrollo y en staging.
+2. Crear un respaldo consistente de la base real con `pg_dump` y verificar su restauración en otra base.
+3. Aprobar la ventana de mantenimiento y detener todos los escritores antiguos del inventario.
+4. Aplicar la migración explícita siguiendo `docs/FASE1.md`; conservar el respaldo y datos nuevos.
+5. Crear el administrador con contraseña privada, sin reutilizar credenciales antiguas predeterminadas.
+6. Actualizar servidor/frontend conjuntamente y exigir recarga de pestañas antiguas.
+7. Configurar DATABASE_URL, NODE_ENV=production y PUBLIC_ORIGIN con origen HTTPS sin barra final.
+8. Configurar TRUST_PROXY=1 únicamente si la aplicación está detrás del proxy de confianza del hosting.
+9. Verificar login, permisos, consultas, compras, salidas, conflictos, exportaciones y acceso público.
 
-- Un Web Service Node.js.
-- Conexion a PostgreSQL mediante `DATABASE_URL`.
-- Variables secretas para el login.
-- Health check en `/api/health`.
-
-## Pasos
-
-1. Cree una cuenta en Render: https://render.com
-2. Suba este proyecto a GitHub.
-3. En Render, vaya a `New` y elija `Blueprint`.
-4. Conecte el repositorio de GitHub donde subio este proyecto.
-5. Render detectara `render.yaml`.
-6. Cree una base PostgreSQL gratuita en Neon o Supabase y copie su connection string.
-7. Cuando Render pida variables secretas, escriba:
-   - `DATABASE_URL`: la cadena de conexion PostgreSQL
-   - `APP_USER`: su usuario, por ejemplo `admin`
-   - `APP_PASSWORD`: una clave segura
-8. Apruebe la creacion del servicio.
-9. Cuando termine el deploy, Render le dara una URL como:
-   - `https://japurima-almacen.onrender.com`
-
-## Variables
-
-En Render quedaran asi:
-
-- `DATABASE_URL`: secreto, lo copia desde Neon o Supabase
-- `APP_USER`: secreto, lo escribe usted
-- `APP_PASSWORD`: secreto, lo escribe usted
-
-Los datos se guardaran en PostgreSQL en la tabla:
-
-```text
-inventory_state
-```
-
-## Comandos de Render
-
-Render usara:
-
-```text
-Build Command: npm install
-Start Command: npm start
-```
-
-## Importante
-
-- No guarde datos reales en archivo dentro de Render gratis.
-- PostgreSQL evita que se pierdan datos cuando Render redeploya o reinicia.
-- En produccion, el sistema no iniciara si falta `DATABASE_URL`.
-- Si cambia codigo en GitHub, Render redeploya automaticamente.
-
-## Recomendacion
-
-Para comenzar, use Render para la web y Neon o Supabase para PostgreSQL gratuito.
-
-## Seguridad
-
-Use una clave larga y cambiela si sospecha que alguien mas la conoce.
+No use el almacenamiento de archivos en producción. El proceso de aplicación no crea tablas automáticamente.
+Las credenciales APP_USER/APP_PASSWORD ya no autentican. Las cuentas se gestionan mediante hashes en `users`.
+Las instrucciones detalladas y la estrategia de reversión están en [docs/FASE1.md](docs/FASE1.md).

@@ -1,0 +1,34 @@
+{
+  "version": "1.5.0",
+  "codeCommit": "2038b3dd1d0c69fe3ca485c305dcb5a0b6b4c2e1",
+  "platform": "Windows",
+  "postgres": "17.6",
+  "tests": {
+    "total": 56,
+    "passed": 56,
+    "failed": 0,
+    "skipped": 0
+  },
+  "installation": "npm ci --ignore-scripts; no dependency install hooks in lock",
+  "visual": "Chrome 1440/900/390/320; 5 PDFs rendered with Poppler; XLSX verified with openpyxl",
+  "productionModified": false,
+  "metrics": {
+    "node": "v24.19.0",
+    "users": 30,
+    "requests": 90,
+    "statuses": {
+      "200": 90
+    },
+    "p50Ms": 275.03,
+    "p95Ms": 912.97,
+    "maxMs": 975.33,
+    "rssPeakMiB": 120.52,
+    "heapPeakMiB": 33.3,
+    "heavyPeak": 2,
+    "backupBytes": 1139939,
+    "backupSha256": "b92bb8462c7cf0c6ef5264b4e3962638a25197e973c641871f7d6c214db4ebb5",
+    "inventorySha256": "4b37fb98cde13b1b2b29238621302887696d2a3835d1cda924b20d34d338463d",
+    "restoredTables": 12,
+    "durationMs": 17690
+  }
+}

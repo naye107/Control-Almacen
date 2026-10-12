@@ -23,6 +23,6 @@ async function verifyPassword(password, encoded) {
 function safeUser(user) { return { id: user.id, username: user.username, role: user.role, active: user.active, createdAt: user.createdAt }; }
 function validateUser(data) {
   if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(data.username || '')) throw new AppError(422, 'INVALID_USERNAME');
-  if (!['ADMINISTRADOR','ALMACENERO'].includes(data.role)) throw new AppError(422, 'INVALID_ROLE');
+  if (!require('./permissions').ROLES.includes(data.role)) throw new AppError(422, 'INVALID_ROLE');
 }
 module.exports = { digest, randomToken, equal, hashPassword, verifyPassword, safeUser, validateUser };

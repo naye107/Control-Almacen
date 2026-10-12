@@ -45,10 +45,10 @@
 
         <nav class="nav-list" id="main-nav" aria-label="Secciones">
           <button class="nav-item active" type="button" data-view="dashboard"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#dashboard"></use></svg><span>Panel</span></button>
-          <button class="nav-item" type="button" data-admin-only data-view="products"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#box"></use></svg><span>Productos</span></button>
-          <button class="nav-item" type="button" data-admin-only data-view="purchases"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#purchases"></use></svg><span>Compras</span></button>
-          <button class="nav-item" type="button" data-admin-only data-view="outputs"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#outputs"></use></svg><span>Salidas</span></button>
-          <button class="nav-item" type="button" data-view="stock"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#stock"></use></svg><span>Existencias</span></button><button class="nav-item" type="button" data-view="dispatches"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#dispatches"></use></svg><span>Despachos</span></button>
+          <button class="nav-item" type="button" data-view="products"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#box"></use></svg><span>Productos</span></button>
+          <button class="nav-item" type="button" data-operator-only data-view="purchases"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#purchases"></use></svg><span>Compras</span></button>
+          <button class="nav-item" type="button" data-operator-only data-view="outputs"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#outputs"></use></svg><span>Salidas</span></button>
+          <button class="nav-item" type="button" data-view="stock"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#stock"></use></svg><span>Existencias</span></button><button class="nav-item" type="button" data-operator-only data-view="dispatches"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#dispatches"></use></svg><span>Despachos</span></button>
         <button class="nav-item" type="button" data-admin-only data-view="reports"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#reports"></use></svg><span>Reportes</span></button><button class="nav-item" type="button" data-admin-only data-view="users"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#users"></use></svg><span>Usuarios</span></button>
         </nav>
 
@@ -143,7 +143,7 @@
               <h2>Catalogo</h2>
               <button class="text-button" type="button" id="cancel-product-edit" hidden>Cancelar edicion</button>
             </div>
-            <form id="product-form" class="form-grid">
+            <form data-admin-only id="product-form" class="form-grid">
               <input type="hidden" id="product-id">
               <label>
                 Nombre comercial
@@ -251,7 +251,7 @@
                 <div class="section-heading bulk-heading">
                   <h3>Productos</h3>
                   <div class="bulk-heading-actions">
-                    <button class="ghost-button" type="button" id="show-quick-product">Registrar producto nuevo</button>
+                    <button class="ghost-button" type="button" data-admin-only id="show-quick-product">Registrar producto nuevo</button>
                     <button class="ghost-button" type="button" id="add-purchase-line">Agregar producto</button>
                   </div>
                 </div>
@@ -565,7 +565,7 @@
   <form id="user-create-form" class="form-grid">
     <label>Usuario<input name="username" minlength="3" maxlength="64" required autocomplete="off"></label>
     <label>Contrasena inicial<input name="password" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
-    <label>Rol<select name="role"><option>ALMACENERO</option><option>ADMINISTRADOR</option></select></label>
+    <p class="role-help">Administrador: acceso total. Almacenero: compras, ingresos, salidas y despachos. Supervisor: consulta de productos, cantidades y Kardex.</p><label>Rol<select name="role"><option>ALMACENERO</option><option>SUPERVISOR</option><option>ADMINISTRADOR</option></select></label>
     <button class="primary-button" type="submit">Crear usuario</button>
   </form><button id="refresh-users" class="secondary-button" type="button">Actualizar lista</button>
   <p id="users-message" aria-live="polite"></p><div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="users-table"></tbody></table></div>

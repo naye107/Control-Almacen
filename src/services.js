@@ -36,10 +36,11 @@ class Services {
   return this.store.transact(async tx=>{
    const current=await tx.getInventory(true);
    await tx.lockDispatchPrincipal(hash);
-   const session=await this.authenticated(hash,tx,'ADMINISTRADOR');
+   const session=await this.authenticated(hash,tx);require('./permissions').requireOperator(session.user);
    const replay=await tx.getWrite(operationId);
    if(replay) { if(replay.actorId!==session.user.id||replay.payloadHash!==payloadHash)throw new AppError(409,'IDEMPOTENCY_CONFLICT'); return {ok:true,revision:replay.version,replayed:true}; }
    if(current.version!==String(revision))throw new AppError(409,'STATE_CONFLICT');
+   if(session.user.role==='ALMACENERO')require('./permissions').validateWarehouseChange(current.state,payload);
    const validated=validateChange(current.state,payload,await tx.linkedOutputs(),await tx.referencedRequestProducts());
    const version=(BigInt(current.version)+1n).toString();
    await tx.saveInventory(validated.state,current.version);

@@ -56,20 +56,21 @@ function createServer({store,services,production=false,publicOrigin='',trustProx
    if(route==='/api/public/catalog'&&req.method==='GET') {
     rate(req,'catalog',120);json(200,await services.requests.catalog(url.searchParams.get('category')||undefined));return;
    }
-   if(route==='/api/public/requests'&&req.method==='POST') {rate(req,'request',60);json(201,await services.registerRequest(await body(req)));return;}
+   if(route==='/api/public/requests'&&req.method==='POST') {if((await services.session(hash))?.user.role==='SUPERVISOR')throw new AppError(403,'FORBIDDEN');rate(req,'request',60);json(201,await services.registerRequest(await body(req)));return;}
    if(route==='/api/public/requests/status'&&req.method==='POST') {rate(req,'lookup',20);const input=await body(req);if(!input||typeof input!=='object'||Array.isArray(input))throw new AppError(422,'INVALID_REQUEST_FIELDS');json(200,await services.lookupRequest(input.code,input.privateKey));return;}
-   if(route==='/api/public/requests/pdf'&&req.method==='POST'){rate(req,'public-document',20);const d=await services.documents.publicRequest(await body(req));sendFile(d.pdf,d.filename,'application/pdf',{'X-Document-SHA256':d.sha256});return;}
+   if(route==='/api/public/requests/pdf'&&req.method==='POST'){if((await services.session(hash))?.user.role==='SUPERVISOR')throw new AppError(403,'FORBIDDEN');rate(req,'public-document',20);const d=await services.documents.publicRequest(await body(req));sendFile(d.pdf,d.filename,'application/pdf',{'X-Document-SHA256':d.sha256});return;}
    if(route.startsWith('/api/')) {
     const session=await services.authenticated(hash);
+    if(session.user.role==='SUPERVISOR'&&!((req.method==='GET'&&['/api/state','/api/state-meta'].includes(route))||(req.method==='POST'&&route==='/api/logout')))throw new AppError(403,'FORBIDDEN');
     if(['POST','PATCH'].includes(req.method)&&!equal(req.headers['x-csrf-token']||'',session.csrfToken))throw new AppError(403,'CSRF_REJECTED');
     if(route==='/api/logout'&&req.method==='POST') {await store.transact(async tx=>{await tx.revokeSessions(null,hash);await tx.audit({actorId:session.user.id,action:'LOGOUT'});});json(200,{ok:true},{'Set-Cookie':cookie('',production)});return;}
     if(route==='/api/state'&&req.method==='GET') {
      await inventoryGate.acquire();let inventory;try{inventory=await store.transact(tx=>tx.getInventory());}finally{inventoryGate.release();}
-     const state=session.user.role==='ADMINISTRADOR'?inventory.state:{products:inventory.state.products,purchases:inventory.state.purchases.map(p=>({id:p.id,productId:p.productId,date:p.date,presentation:p.presentation,quantity:p.quantity})),outputs:inventory.state.outputs.map(o=>({id:o.id,productId:o.productId,date:o.date,presentation:o.presentation,quantity:o.quantity,allocations:o.allocations,usedQuantity:o.usedQuantity,usedUnit:o.usedUnit,quantityMode:o.quantityMode,reason:o.reason,destination:o.destination,dispatchId:o.dispatchId,dispatchCode:o.dispatchCode}))};
+     const state=['ADMINISTRADOR','ALMACENERO'].includes(session.user.role)?inventory.state:{products:inventory.state.products,purchases:inventory.state.purchases.map(p=>({id:p.id,productId:p.productId,date:p.date,presentation:p.presentation,quantity:p.quantity})),outputs:inventory.state.outputs.map(o=>({id:o.id,productId:o.productId,date:o.date,presentation:o.presentation,quantity:o.quantity,allocations:o.allocations,usedQuantity:o.usedQuantity,usedUnit:o.usedUnit,quantityMode:o.quantityMode,reason:o.reason,destination:o.destination,dispatchId:o.dispatchId,dispatchCode:o.dispatchCode}))};
      json(200,state,{'X-State-Revision':inventory.version});return;
     }
     if(route==='/api/state-meta'&&req.method==='GET') {const i=await store.transact(tx=>tx.getInventory());json(200,{revision:i.version});return;}
-    if(route==='/api/state'&&req.method==='POST') {requireRole(session.user,'ADMINISTRADOR');json(200,await inventoryGate.run(async()=>services.inventoryWrite(hash,await body(req,limits.inventoryBytes),req.headers['x-state-revision'],req.headers['x-operation-id'])));return;}
+    if(route==='/api/state'&&req.method==='POST') {require('./src/permissions').requireOperator(session.user);json(200,await inventoryGate.run(async()=>services.inventoryWrite(hash,await body(req,limits.inventoryBytes),req.headers['x-state-revision'],req.headers['x-operation-id'])));return;}
     if(route==='/api/users') {
      requireRole(session.user,'ADMINISTRADOR');
      if(req.method==='GET'){json(200,await store.transact(async tx=>(await tx.listUsers()).map(safeUser)));return;}

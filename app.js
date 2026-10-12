@@ -20,11 +20,15 @@ function rememberPending(operation) {
   try { if (operation) sessionStorage.setItem(recoveryKey(), JSON.stringify(operation)); else sessionStorage.removeItem(recoveryKey()); } catch { showToast('No se pudo almacenar recuperacion: descargue la copia pendiente antes de cerrar.'); }
   const panel = document.querySelector('#pending-panel'); if (panel) panel.hidden = !operation;
 }
+function canWriteMovements() { return ['ADMINISTRADOR','ALMACENERO'].includes(currentRole); }
+function canView(view) { return currentRole==='ADMINISTRADOR'||(currentRole==='ALMACENERO'&&['dashboard','products','purchases','outputs','stock','dispatches'].includes(view))||(currentRole==='SUPERVISOR'&&['dashboard','products','stock'].includes(view)); }
 function applyRole() {
   const admin = currentRole === 'ADMINISTRADOR';
   document.body.dataset.role = currentRole;
   document.querySelectorAll('[data-admin-only]').forEach(el => { el.hidden = !admin; });
-  if (!admin && ['products','purchases','outputs','users','reports'].some(name => document.querySelector('#view-' + name)?.classList.contains('active'))) switchView('stock');
+  document.querySelectorAll('[data-operator-only]').forEach(el=>{el.hidden=!canWriteMovements();});
+  document.querySelectorAll('button[data-action],#save-quick-product').forEach(el=>{el.hidden=!admin;});
+  const active=document.querySelector('.view.active');if(active&&!canView(active.id.replace('view-','')))switchView('stock');
 }
 function sessionInfo(payload) {
   const nextUsername = typeof payload.user === 'string' ? payload.user : payload.user?.username || '';
@@ -292,7 +296,7 @@ async function loadState() {
 }
 
 async function saveState(retry = false) {
-  if (currentRole !== 'ADMINISTRADOR') { showToast('No tiene permiso para modificar inventario.'); return false; }
+  if (!canWriteMovements()) { showToast('Su cuenta permite únicamente consultar.'); return false; }
   if (pendingSave || (pendingOperation && !retry)) { showToast('Resuelva la operacion pendiente antes de guardar otra.'); return false; }
   const operation = retry ? pendingOperation : { id: uid(), revision: lastServerRevision, snapshot: JSON.stringify(state), username: currentUsername };
   if (!operation) return false;
@@ -1337,10 +1341,10 @@ function renderProducts() {
         <td>${statusBadge(product, stats)}</td>
         <td class="actions-cell">
           <div class="row-actions">
-            <button class="icon-button" type="button" title="Editar producto" data-action="edit-product" data-id="${product.id}">Editar</button>
-            <button class="icon-button" type="button" title="${toggleTitle}" data-action="toggle-product" data-id="${product.id}">${toggleLabel}</button>
-            <button class="icon-button warning" type="button" title="${expiredTitle}" data-action="toggle-expired" data-id="${product.id}">${expiredLabel}</button>
-            <button class="icon-button danger" type="button" title="Eliminar producto" data-action="delete-product" data-id="${product.id}">Eliminar</button>
+            <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button" type="button" title="Editar producto" data-action="edit-product" data-id="${product.id}">Editar</button>
+            <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button" type="button" title="${toggleTitle}" data-action="toggle-product" data-id="${product.id}">${toggleLabel}</button>
+            <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button warning" type="button" title="${expiredTitle}" data-action="toggle-expired" data-id="${product.id}">${expiredLabel}</button>
+            <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar producto" data-action="delete-product" data-id="${product.id}">Eliminar</button>
           </div>
         </td>
       </tr>
@@ -1375,7 +1379,7 @@ function renderPurchases() {
           <td>${escapeHtml(purchase.doc || "-")}</td>
           <td>${formatNumber.format(purchase.quantity)}</td>
           <td class="actions-cell">
-            <button class="icon-button danger" type="button" title="Eliminar compra" data-action="delete-purchase" data-id="${purchase.id}">Eliminar</button>
+            <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar compra" data-action="delete-purchase" data-id="${purchase.id}">Eliminar</button>
           </td>
         </tr>
       `;
@@ -1408,7 +1412,7 @@ function renderOutputs() {
           <td>${escapeHtml(output.reason)}</td>
           <td>${escapeHtml(output.responsible || "-")}</td>
           <td class="actions-cell">
-            ${output.dispatchId ? '<span class="badge">Despacho confirmado</span>' : `<button class="icon-button danger" type="button" title="Eliminar salida" data-action="delete-output" data-id="${output.id}">Eliminar</button>`}
+            ${output.dispatchId ? '<span class="badge">Despacho confirmado</span>' : `<button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar salida" data-action="delete-output" data-id="${output.id}">Eliminar</button>`}
           </td>
         </tr>
       `;
@@ -1889,7 +1893,7 @@ async function deleteOutput(outputId) {
 
 window.JapurimaDispatchBridge={context:()=>({role:currentRole,username:currentUsername,csrfToken}),sync:()=>refreshStateFromServer()};
 function switchView(viewName) {
-  if (currentRole !== "ADMINISTRADOR" && ["products","purchases","outputs","users","reports"].includes(viewName)) viewName = "stock";
+  if (!canView(viewName)) viewName = "stock";
   document.body.dataset.activeView=viewName;
   elements.navItems.forEach((item) => {
     item.classList.toggle("active", item.dataset.view === viewName);
@@ -2088,7 +2092,7 @@ function bindEvents() {
   appEventsBound = true;
   [productForm,purchaseForm,outputForm].forEach(form => form.addEventListener('input', () => { formDirty = true; }));
   document.addEventListener('submit', event => {
-    if (event.target.matches('#product-form,#purchase-form,#output-form') && (currentRole !== 'ADMINISTRADOR' || pendingSave || pendingOperation || isSyncing)) {
+    if (event.target.matches('#product-form,#purchase-form,#output-form') && ((event.target.id==='product-form'?currentRole!=='ADMINISTRADOR':!canWriteMovements()) || pendingSave || pendingOperation || isSyncing)) {
       event.preventDefault(); event.stopImmediatePropagation(); showToast('Operacion bloqueada: revise permisos o la copia pendiente.');
     }
   }, true);

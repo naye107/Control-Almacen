@@ -953,3 +953,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #7caa8f;outline-offset:3p
 .metric,.panel,.toolbar-panel{border-radius:14px;box-shadow:0 4px 18px #193e2c05}
 @media(max-width:1000px) and (min-width:701px){.nav-list{grid-template-columns:repeat(4,minmax(0,1fr))}.nav-item{justify-content:center;padding:10px 6px;gap:7px;font-size:12px}}
 @media(max-width:700px){.brand-logo{width:72px;height:65px}.nav-item{min-height:44px}.sidebar.nav-open .nav-list{max-height:440px}.login-card{padding:26px}.login-logo{width:150px;height:135px}}
+
+.role-help{padding:14px 16px;border:1px solid #dbe7dd;border-radius:10px;background:#f4f8f2;color:#31563d;font-size:13px;line-height:1.7;margin:0 0 18px}
+body:not([data-role="ADMINISTRADOR"]) #view-products .actions-cell,body:not([data-role="ADMINISTRADOR"]) #view-products th:last-child{display:none}
+#users-table select{min-width:150px;min-height:40px;border:1px solid #ccdacc;border-radius:8px;background:#fff;padding:8px;color:#214330;font-size:13px}

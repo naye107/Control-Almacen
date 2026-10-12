@@ -1,0 +1,17 @@
+{
+  "name": "japurima-demo",
+  "version": "1.5.0-demo.1",
+  "private": true,
+  "description": "Demostracion aislada; exclusivamente datos ficticios",
+  "main": "server.js",
+  "scripts": {
+    "start": "node scripts/demo-server.cjs"
+  },
+  "dependencies": {
+    "pdfkit": "0.20.2",
+    "pg": "^8.16.0"
+  },
+  "engines": {
+    "node": "24.19.0"
+  }
+}

@@ -308,6 +308,11 @@
       "path": "users.js",
       "bytes": 3519,
       "sha256": "03cee212a3ffd486e6e03db2b98b989111e5a99ea3e3eca5ae2607d58c6fbc27"
+    },
+    {
+      "path": ".gitattributes",
+      "bytes": 89,
+      "sha256": "c793757ea40cf78de285f47b951102368ab70848eb7dd7e48c36375da541bffc"
     }
   ]
 }

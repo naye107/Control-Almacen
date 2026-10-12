@@ -1,0 +1,2 @@
+# Preserve verified bytes, including SQL and the release manifest, on all hosts.
+* -text

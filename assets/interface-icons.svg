@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+ <symbol id="agro" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M8 14h8"/><path d="M11 17h.01M14 18h.01"/></symbol>
+ <symbol id="tools" viewBox="0 0 24 24"><path d="m14 6 4-4a6 6 0 0 1-7 8L4 17a2.1 2.1 0 0 0 3 3l7-7a6 6 0 0 0 8-7l-4 4-4-4Z"/></symbol>
+ <symbol id="box" viewBox="0 0 24 24"><path d="m12 3 9 5v9l-9 5-9-5V8l9-5ZM3 8l9 5 9-5M12 13v9M7.5 5.5l9 5"/></symbol>
+ <symbol id="request" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 4V2h6v2M9 10h6M9 14h6M9 18h3"/></symbol>
+ <symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+ <symbol id="shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6l8-3ZM8.5 12l2.5 2.5 4.5-5"/></symbol>
+ <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+ <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+ <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+ <symbol id="dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+ <symbol id="purchases" viewBox="0 0 24 24"><path d="M2 3h3l2 12h12l2-8H6M8 19h.01M18 19h.01"/><circle cx="8" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></symbol>
+ <symbol id="outputs" viewBox="0 0 24 24"><path d="M12 3v12m-5-7 5-5 5 5M4 15v6h16v-6"/></symbol>
+ <symbol id="stock" viewBox="0 0 24 24"><path d="m3 9 9-6 9 6v12H3V9ZM8 21V11h8v10M8 15h8M8 18h8"/></symbol>
+ <symbol id="dispatches" viewBox="0 0 24 24"><path d="M2 5h12v12H2V5ZM14 9h4l4 4v4h-8M14 13h8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+ <symbol id="reports" viewBox="0 0 24 24"><path d="M4 3v18h17M9 17v-5M14 17V7M19 17v-8"/></symbol>
+ <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M17 4a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5"/></symbol>
+ <symbol id="logout" viewBox="0 0 24 24"><path d="M9 3H3v18h6M8 12h13m-5-5 5 5-5 5"/></symbol>
+</svg>

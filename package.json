@@ -1,0 +1,19 @@
+{
+  "name": "japurima-almacen",
+  "version": "1.6.0-rc.1",
+  "private": true,
+  "description": "JAPURIMA production candidate: three roles, PostgreSQL and preserved inventory",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "create-admin": "node scripts/create-admin.cjs",
+    "migrate": "node scripts/migrate.cjs"
+  },
+  "dependencies": {
+    "pdfkit": "0.20.2",
+    "pg": "^8.16.0"
+  },
+  "engines": {
+    "node": "24.19.0"
+  }
+}

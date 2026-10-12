@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JAPURIMA | Control de almacen</title>
+    <link rel="stylesheet" href="styles.css?v=20260819-1">
+  <link rel="stylesheet" href="dispatches.css?v=fase3"><link rel="stylesheet" href="reports.css?v=fase4"></head>
+  <body>
+    <section class="login-screen" id="login-screen" hidden>
+      <form class="login-card" id="login-form">
+        <img class="login-logo" src="assets/japurima-logo.png" alt="Agricola Japurima S.A.">
+        <div>
+          <h1>JAPURIMA</h1>
+          <p>Control de almacen</p>
+        </div>
+        <label>
+          Usuario
+          <input id="login-user" autocomplete="username" required>
+        </label>
+        <label>
+          Clave
+          <input id="login-password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="primary-button" type="submit">Ingresar</button>
+        <a href="public.html">Registrar o consultar una solicitud sin iniciar sesion</a>
+        <p class="login-error" id="login-error" hidden>Usuario o clave incorrectos.</p>
+      </form>
+    </section>
+
+    <div class="app-shell" id="app-shell" hidden>
+      <aside class="sidebar">
+        <div class="brand">
+          <img class="brand-logo" src="assets/japurima-logo.png" alt="Agricola Japurima S.A.">
+          <div>
+            <strong>JAPURIMA</strong>
+            <small>Almacen</small>
+          </div>
+        </div>
+
+        <button class="module-toggle" id="module-toggle" type="button" aria-expanded="false" aria-controls="main-nav">
+          <span>Modulos</span>
+          <span class="module-caret" aria-hidden="true"></span>
+        </button>
+
+        <nav class="nav-list" id="main-nav" aria-label="Secciones">
+          <button class="nav-item active" type="button" data-view="dashboard"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#dashboard"></use></svg><span>Panel</span></button>
+          <button class="nav-item" type="button" data-view="products"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#box"></use></svg><span>Productos</span></button>
+          <button class="nav-item" type="button" data-operator-only data-view="purchases"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#purchases"></use></svg><span>Compras</span></button>
+          <button class="nav-item" type="button" data-operator-only data-view="outputs"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#outputs"></use></svg><span>Salidas</span></button>
+          <button class="nav-item" type="button" data-view="stock"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#stock"></use></svg><span>Existencias</span></button><button class="nav-item" type="button" data-operator-only data-view="dispatches"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#dispatches"></use></svg><span>Despachos</span></button>
+        <button class="nav-item" type="button" data-admin-only data-view="reports"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#reports"></use></svg><span>Reportes</span></button><button class="nav-item" type="button" data-admin-only data-view="users"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#users"></use></svg><span>Usuarios</span></button>
+        </nav>
+
+        <div class="sidebar-actions">
+          <button class="ghost-button" type="button" id="export-data">Exportar CSV</button>
+          <button class="ghost-button" type="button" id="logout-button"><svg class="ui-icon " viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="assets/interface-icons.svg#logout"></use></svg><span>Cerrar sesión</span></button>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section id="pending-panel" class="panel" hidden aria-live="polite">
+          <strong>Existe una operacion pendiente de confirmacion</strong>
+          <p>Un reintento conserva su identificador. Si hay un conflicto, descargue la copia para conciliarla con el inventario actual.</p>
+          <button type="button" id="pending-download" class="secondary-button">Descargar copia</button>
+          <button type="button" id="pending-retry" class="secondary-button">Reintentar</button>
+          <button type="button" id="pending-reload" class="secondary-button">Descargar copia y cargar estado actual</button>
+        </section>
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Sistema integrado de gestión de almacén</p>
+            <h1 id="view-title">Panel</h1>
+          </div>
+          <div class="header-actions">
+            <label class="search-box">
+              <span>Buscar</span>
+              <input id="global-search" type="search" placeholder="Producto, presentacion, lote...">
+            </label>
+          </div>
+        </header>
+
+        <section class="metrics" aria-label="Resumen">
+          <article class="metric">
+            <span>Productos activos</span>
+            <strong id="metric-products">0</strong>
+          </article>
+          <article class="metric">
+            <span>Unidades en stock</span>
+            <strong id="metric-stock">0</strong>
+          </article>
+          <article class="metric alert-metric">
+            <span>Bajo minimo</span>
+            <strong id="metric-alerts">0</strong>
+          </article>
+        </section>
+
+        <section class="view active" id="view-dashboard" data-title="Panel">
+          <div class="grid-two">
+            <section class="panel">
+              <div class="section-heading">
+                <h2>Alertas de stock</h2>
+                <span id="alert-count" class="counter">0</span>
+              </div>
+              <div id="stock-alerts" class="stack-list empty-state">Sin alertas</div>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <h2>Movimientos recientes</h2>
+                <span id="movement-count" class="counter">0</span>
+              </div>
+              <div id="recent-movements" class="stack-list empty-state">Sin movimientos</div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h2>Existencias por producto</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre comercial</th>
+                    <th>Materia activa</th>
+                    <th>Categoria</th>
+                    <th>Unidad</th>
+                    <th>Stock</th>
+                    <th>Cantidad</th>
+                    <th>Minimo</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboard-stock-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-products" data-title="Productos">
+          <section class="panel">
+            <div class="section-heading">
+              <h2>Catalogo</h2>
+              <button class="text-button" type="button" id="cancel-product-edit" hidden>Cancelar edicion</button>
+            </div>
+            <form data-admin-only id="product-form" class="form-grid">
+              <input type="hidden" id="product-id">
+              <label>
+                Nombre comercial
+                <input id="product-name" required autocomplete="off" placeholder="Urea granulada">
+              </label>
+              <label>
+                Materia activa
+                <input id="product-active-ingredient" required autocomplete="off" placeholder="Nitrogeno 46%">
+              </label>
+              <label>
+                Categoria
+                <input id="product-category" list="category-options" required autocomplete="off" placeholder="Escriba una categoria">
+                <datalist id="category-options"></datalist>
+              </label>
+              <label>Clasificación para solicitudes<select id="product-request-category"><option value="">No publicar en solicitudes</option><option value="AGROQUIMICOS">Agroquímicos</option><option value="HERRAMIENTAS">Herramientas</option><option value="OTROS">Otros productos</option></select></label>
+              <label>
+                Presentacion
+                <input id="product-presentation" required autocomplete="off" placeholder="Saco 50 kg">
+              </label>
+              <label>
+                Unidad
+                <select id="product-unit" required>
+                  <option value="sacos">sacos</option>
+                  <option value="kg">kg</option>
+                  <option value="litros">litros</option>
+                  <option value="galones">galones</option><option value="bidones">bidones (historico)</option>
+                  <option value="unidades">unidades</option>
+                  <option value="pastillas">pastillas</option>
+                </select>
+              </label>
+              <label>
+                Stock inicial
+                <input id="product-opening-stock" type="number" min="0" step="0.01" value="0" required>
+              </label>
+              <label>
+                Stock minimo
+                <input id="product-min-stock" type="number" min="0" step="0.01" value="0" required>
+              </label>
+              <button class="primary-button form-action" type="submit">Guardar producto</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h2>Lista de productos</h2>
+              <span id="product-count" class="counter">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre comercial</th>
+                    <th>Materia activa</th>
+                    <th>Categoria</th>
+                    <th>Presentacion</th>
+                    <th>Stock</th>
+                    <th>Cantidad</th>
+                    <th>Minimo</th>
+                    <th>Estado</th>
+                    <th class="actions-cell">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="products-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-purchases" data-title="Compras">
+          <section class="panel toolbar-panel">
+            <div class="section-heading">
+              <h2>Compras</h2>
+            </div>
+            <div class="toolbar">
+              <label class="toolbar-field">
+                Proveedor
+                <input id="purchase-supplier-filter" type="search" autocomplete="off" placeholder="Buscar proveedor">
+              </label>
+              <button class="ghost-button" type="button" id="export-purchases-excel">Exportar Excel</button>
+              <button class="ghost-button" type="button" id="print-purchases">Imprimir</button>
+            </div>
+          </section>
+
+          <section class="panel print-hidden">
+            <div class="section-heading">
+              <h2>Nueva compra</h2>
+            </div>
+            <form id="purchase-form" class="purchase-form">
+              <div class="form-grid purchase-common-grid">
+                <label>
+                  Fecha
+                  <input id="purchase-date" type="date" required>
+                </label>
+                <label>
+                  Proveedor
+                  <input id="purchase-supplier" required autocomplete="off" placeholder="Proveedor">
+                </label>
+                <label>
+                  Documento
+                  <input id="purchase-doc" autocomplete="off" placeholder="Factura, guia">
+                </label>
+              </div>
+
+              <div class="bulk-purchase">
+                <div class="section-heading bulk-heading">
+                  <h3>Productos</h3>
+                  <div class="bulk-heading-actions">
+                    <button class="ghost-button" type="button" data-admin-only id="show-quick-product">Registrar producto nuevo</button>
+                    <button class="ghost-button" type="button" id="add-purchase-line">Agregar producto</button>
+                  </div>
+                </div>
+                <section class="quick-product-panel" id="quick-product-panel" hidden>
+<label>Clasificación para solicitudes<select id="quick-product-request-category"><option value="">No publicar en solicitudes</option><option value="AGROQUIMICOS">Agroquímicos</option><option value="HERRAMIENTAS">Herramientas</option><option value="OTROS">Otros productos</option></select></label>
+                  <div class="section-heading">
+                    <h3>Nuevo producto</h3>
+                    <button class="text-button" type="button" id="cancel-quick-product">Cancelar</button>
+                  </div>
+                  <div class="form-grid quick-product-grid">
+                    <label>
+                      Nombre comercial
+                      <input id="quick-product-name" autocomplete="off" placeholder="Nombre del producto">
+                    </label>
+                    <label>
+                      Materia activa
+                      <input id="quick-product-active-ingredient" autocomplete="off" placeholder="Materia activa">
+                    </label>
+                    <label>
+                      Categoria
+                      <input id="quick-product-category" list="category-options" autocomplete="off" placeholder="Categoria">
+                    </label>
+                    <label>
+                      Presentacion
+                      <input id="quick-product-presentation" autocomplete="off" placeholder="Saco 50 kg">
+                    </label>
+                    <label>
+                      Unidad
+                      <select id="quick-product-unit">
+                        <option value="sacos">sacos</option>
+                        <option value="kg">kg</option>
+                        <option value="litros">litros</option>
+                        <option value="galones">galones</option>
+                        <option value="unidades">unidades</option>
+                        <option value="pastillas">pastillas</option>
+                      </select>
+                    </label>
+                    <label>
+                      Stock minimo
+                      <input id="quick-product-min-stock" type="number" min="0" step="0.01" value="0">
+                    </label>
+                    <button class="primary-button form-action" type="button" id="save-quick-product">Guardar y seleccionar</button>
+                  </div>
+                </section>
+                <div class="table-wrap">
+                  <table class="bulk-purchase-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Presentacion</th>
+                        <th>Cantidad</th>
+                        <th>Lote</th>
+                        <th class="actions-cell">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="purchase-lines"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="form-actions-row">
+                <button class="primary-button" type="submit">Registrar compras</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h2>Historial de compras</h2>
+              <span id="purchase-count" class="counter">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Producto</th>
+                    <th>Presentacion</th>
+                    <th>Proveedor</th>
+                    <th>Documento</th>
+                    <th>Cantidad</th>
+                    <th class="actions-cell">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="purchases-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-outputs" data-title="Salidas">
+          <section class="panel toolbar-panel">
+            <div class="section-heading">
+              <h2>Salidas</h2>
+            </div>
+            <div class="toolbar">
+              <button class="ghost-button" type="button" id="export-outputs-excel">Exportar Excel</button>
+              <button class="ghost-button" type="button" id="print-outputs">Imprimir</button>
+            </div>
+          </section>
+
+          <section class="panel print-hidden">
+            <div class="section-heading">
+              <h2>Nueva salida</h2>
+              <span id="available-stock" class="counter">0 productos</span>
+            </div>
+            <form id="output-form" class="output-form">
+              <div class="form-grid output-common-grid">
+                <label>
+                  Fecha
+                  <input id="output-date" type="date" required>
+                </label>
+                <label>
+                  Destino
+                  <input id="output-destination" required autocomplete="off" placeholder="Campo, cliente, area">
+                </label>
+                <label>
+                  Motivo
+                  <select id="output-reason" required>
+                    <option value="Aplicacion">Aplicacion</option>
+                    <option value="Fertilización">Fertilización</option>
+                    <option value="Venta">Venta</option>
+                    <option value="Traslado">Traslado</option>
+                    <option value="Ajuste">Ajuste</option>
+                  </select>
+                </label>
+                <label>
+                  Responsable
+                  <input id="output-responsible" autocomplete="off" placeholder="Responsable">
+                </label>
+                <label>
+                  Bloque del campo
+                  <select id="output-template">
+                    <option value="">Sin bloque</option>
+                  </select>
+                </label>
+                <button class="ghost-button form-action" type="button" id="load-output-template">Cargar bloque</button>
+                <button class="ghost-button form-action" type="button" id="save-output-template">Guardar bloque</button>
+              </div>
+
+              <div id="application-dose-panel" class="application-dose-panel" hidden>
+                <label>
+                  Calculo
+                  <select id="output-quantity-mode">
+                    <option value="dose">Dosis x cilindros/tanques</option>
+                    <option value="direct">Cantidad directa</option>
+                  </select>
+                </label>
+                <label>
+                  Tipo
+                  <select id="output-dose-container-type">
+                    <option value="cilindros">Cilindros</option>
+                    <option value="tanques">Tanques</option>
+                  </select>
+                </label>
+                <label>
+                  Cantidad
+                  <input id="output-dose-container-count" type="number" min="0.01" step="0.01" placeholder="Nro.">
+                </label>
+                <span id="output-dose-help" class="calculation-help">El total se calcula por producto.</span>
+              </div>
+
+              <div class="bulk-output">
+                <div class="section-heading bulk-heading">
+                  <h3>Productos</h3>
+                  <button class="ghost-button" type="button" id="add-output-line">Agregar producto</button>
+                </div>
+                <div class="table-wrap">
+                  <table class="bulk-output-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Presentacion</th>
+                        <th id="output-quantity-heading">Cantidad</th>
+                        <th>Unidad</th>
+                        <th>Stock</th>
+                        <th class="actions-cell">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="output-lines"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="form-actions-row">
+                <button class="primary-button" type="submit">Registrar salidas</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h2>Historial de salidas</h2>
+              <span id="output-count" class="counter">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Producto</th>
+                    <th>Presentacion</th>
+                    <th>Destino</th>
+                    <th>Cantidad</th>
+                    <th>Motivo</th>
+                    <th>Responsable</th>
+                    <th class="actions-cell">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="outputs-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-stock" data-title="Existencias">
+          <section class="panel toolbar-panel">
+            <div class="section-heading">
+              <h2>Inventario actual</h2>
+            </div>
+            <div class="toolbar">
+              <label class="toolbar-field">
+                Categoria
+                <select id="stock-category-filter">
+                  <option value="">Todas</option>
+                </select>
+              </label>
+              <label class="toolbar-field">
+                Materia activa
+                <select id="stock-active-filter">
+                  <option value="">Todas</option>
+                </select>
+              </label>
+              <label class="toolbar-field compact-field">
+                Desde
+                <input id="stock-date-from" type="date">
+              </label>
+              <label class="toolbar-field compact-field">
+                Hasta
+                <input id="stock-date-to" type="date">
+              </label>
+              <label class="check-line">
+                <input id="only-low-stock" type="checkbox">
+                Bajo minimo
+              </label>
+              <button class="ghost-button" type="button" id="export-stock-excel">Exportar Excel</button>
+              <button class="ghost-button" type="button" id="print-stock">Imprimir</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre comercial</th>
+                    <th>Materia activa</th>
+                    <th>Categoria</th>
+                    <th>Presentacion</th>
+                    <th>Inicial</th>
+                    <th>Compras</th>
+                    <th>Salidas</th>
+                    <th>Stock</th>
+                    <th>Cantidad</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="stock-table"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <h2>Kardex</h2>
+              <span id="kardex-count" class="counter">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Producto</th>
+                    <th>Entrada</th>
+                    <th>Salida</th>
+                    <th>Detalle</th>
+                  </tr>
+                </thead>
+                <tbody id="kardex-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      <section class="view dispatch-module" id="view-dispatches" data-title="Despachos">
+ <div class="dispatch-heading"><div><p class="dispatch-eyebrow">AGRÍCOLA JAPURIMA S.A. · ALMACÉN</p><h2>Despachos de almacén</h2><p>Solicitudes, entregas y trazabilidad en un solo lugar.</p></div><button type="button" id="dispatch-refresh" class="ghost-button">Actualizar</button></div>
+ <p id="dispatch-message" class="dispatch-message" hidden role="status"></p>
+ <div id="dispatch-pending" class="dispatch-warning" hidden role="alert">Hay una confirmación sin respuesta. Conservamos el mismo intento para evitar un doble descuento. <button type="button" id="dispatch-download-pending">Guardar copia pendiente</button></div>
+ <div id="dispatch-list-screen">
+  <form id="dispatch-filters" class="dispatch-filters"><label class="dispatch-search">Buscar solicitud<input name="search" type="search" placeholder="Código, persona o producto" maxlength="150"></label><label>Desde<input name="from" type="date"></label><label>Hasta<input name="to" type="date"></label><label>Categoría<select name="category"><option value="">Todas las categorías</option><option value="AGROQUIMICOS">Agroquímicos</option><option value="HERRAMIENTAS">Herramientas</option><option value="OTROS">Otros productos</option></select></label><label>Estado<select name="status"><option value="ACTIVAS">Pendientes y parciales</option><option value="PENDIENTE">Pendientes</option><option value="PARCIALMENTE_DESPACHADA">Parciales</option><option value="DESPACHADA">Despachadas</option><option value="TODAS">Todos</option></select></label><label>Orden<select name="order"><option value="oldest">Más antiguas primero</option><option value="newest">Más recientes primero</option></select></label><button class="primary-button" type="submit">Buscar</button></form>
+  <div class="dispatch-results-heading"><h3>Solicitudes de almacén</h3><span id="dispatch-total" class="counter">0</span></div><div class="dispatch-table-wrap"><table class="dispatch-table"><thead><tr><th>Solicitud / Fecha</th><th>Solicitante / Lugar</th><th>Categoría / Cultivo</th><th>Productos y cantidades</th><th>Estado</th><th></th></tr></thead><tbody id="dispatch-list"></tbody></table></div><div id="dispatch-cards" class="dispatch-cards"></div><div class="dispatch-pagination"><button id="dispatch-prev" type="button" class="ghost-button">← Anterior</button><span id="dispatch-page">Página 1</span><button id="dispatch-next" type="button" class="ghost-button">Siguiente →</button></div>
+ </div>
+ <div id="dispatch-detail-screen" hidden><button type="button" id="dispatch-back" class="dispatch-back">← Volver a solicitudes</button><div class="document-actions"><button id="dispatch-request-pdf" type="button" class="ghost-button">Pedido de almacén PDF</button></div><div id="dispatch-request-summary" class="dispatch-request-summary"></div><form id="dispatch-confirm-form"><div id="dispatch-lines" class="dispatch-lines"></div><div class="dispatch-recipient"><label>Persona que recibe<input name="recipient" maxlength="150" autocomplete="name" required placeholder="Nombre y apellidos de quien recibe"></label><label>Observaciones <span>Opcional</span><textarea name="notes" maxlength="500" rows="3" placeholder="Indicaciones de la entrega"></textarea></label><div class="dispatch-confirm-note">Las existencias se actualizan al confirmar. Se pueden dejar productos sin entregar. El responsable y la fecha se registran automáticamente.</div><button id="dispatch-confirm" class="primary-button" type="submit">Confirmar despacho</button></div></form><div id="dispatch-history" class="dispatch-history"></div></div>
+ <div id="dispatch-receipt-screen" hidden><div class="dispatch-success"><span>✓</span><p>DESPACHO CONFIRMADO</p><h3 id="dispatch-receipt-code"></h3><p>La entrega y sus movimientos de inventario se registraron conjuntamente.</p></div><div id="dispatch-receipt-content"></div><div class="dispatch-receipt-actions"><button id="dispatch-receipt-pdf" type="button" class="primary-button">Descargar PDF</button><button id="dispatch-receipt-download" type="button" class="primary-button">Guardar comprobante</button><button id="dispatch-continue" type="button" class="ghost-button">Ver solicitud actualizada</button><button id="dispatch-receipt-back" type="button" class="ghost-button">Volver al panel</button></div></div>
+</section><section class="view report-module" id="view-reports" data-title="Reportes" data-admin-only>
+<div class="report-heading"><div><p class="report-eyebrow">AGRÍCOLA JAPURIMA S.A. · ADMINISTRACIÓN</p><h2>Reportes y trazabilidad</h2><p>Solicitudes, entregas y saldos con información del servidor.</p></div><button id="report-export" type="button" class="primary-button" disabled>Exportar Excel</button></div>
+<form id="report-filters" class="report-filters"><label class="report-wide">Reporte<select name="type"><option value="requests">Solicitudes por periodo</option><option value="categories">Solicitudes por categoría</option><option value="statuses">Solicitudes por estado</option><option value="products">Productos solicitados y entregados</option><option value="responsibles">Despachos por responsable</option><option value="history">Historial por solicitud</option><option value="differences">Diferencias y pendientes</option></select></label><label>Desde<input name="from" type="date" required></label><label>Hasta<input name="to" type="date" required></label><label class="report-wide">Buscar<input name="search" type="search" maxlength="150" placeholder="Código, solicitante o producto"></label><label>Categoría<select name="category"><option value="">Todas</option><option value="AGROQUIMICOS">Agroquímicos</option><option value="HERRAMIENTAS">Herramientas</option><option value="OTROS">Otros productos</option></select></label><label>Estado<select name="status"><option value="TODAS">Todos</option><option value="PENDIENTE">Pendientes</option><option value="PARCIALMENTE_DESPACHADA">Parciales</option><option value="DESPACHADA">Despachadas</option></select></label><button id="report-search" type="submit" class="primary-button">Consultar reporte</button></form>
+<p id="report-message" class="report-message" role="status" hidden></p><h3 id="report-title">Solicitudes por periodo</h3><p id="report-count" class="report-count"></p><p id="report-cut" class="report-cut"></p><div class="report-table-wrap"><table class="report-table"><thead id="report-head"></thead><tbody id="report-rows"></tbody></table></div><div id="report-cards" class="report-cards"></div><p id="report-empty" hidden>No hay registros con estos filtros.</p><div class="report-pagination"><button id="report-prev" type="button" class="ghost-button">← Anterior</button><span id="report-page">Página 1</span><button id="report-next" type="button" class="ghost-button">Siguiente →</button></div></section>
+<section class="view" id="view-users" data-title="Usuarios" data-admin-only>
+  <article class="panel"><h2>Usuarios</h2>
+  <form id="user-create-form" class="form-grid">
+    <label>Usuario<input name="username" minlength="3" maxlength="64" required autocomplete="off"></label>
+    <label>Contrasena inicial<input name="password" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
+    <p class="role-help">Administrador: acceso total. Almacenero: compras, ingresos, salidas y despachos. Supervisor: consulta de productos, cantidades y Kardex.</p><label>Rol<select name="role"><option>ALMACENERO</option><option>SUPERVISOR</option><option>ADMINISTRADOR</option></select></label>
+    <button class="primary-button" type="submit">Crear usuario</button>
+  </form><button id="refresh-users" class="secondary-button" type="button">Actualizar lista</button>
+  <p id="users-message" aria-live="polite"></p><div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="users-table"></tbody></table></div>
+  </article></section>
+</main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="shared/inventory-rules.js?v=fase1" defer></script>
+    <script src="shared/request-rules.js?v=fase3" defer></script><script src="shared/dispatch-rules.js?v=fase3" defer></script><script src="shared/xlsx-writer.js?v=fase4" defer></script><script src="shared/csv-writer.js?v=fase5a" defer></script><script src="app.js?v=fase5a" defer></script><script src="dispatches.js?v=fase3" defer></script>
+    <script src="documents.js?v=fase4" defer></script><script src="reports.js?v=fase4" defer></script><script src="users.js?v=fase1" defer></script>
+  </body>
+</html>

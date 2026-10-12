@@ -124,3 +124,32 @@
 
 .storage-warning { max-width:1160px; margin:20px auto; }
 @media(max-width:760px) { .storage-warning { margin:16px; } }
+
+/* Professional public portal: corporate mark and matching vector icon family. */
+.request-site{--public-ink:#163b2c;--public-green:#22583e;background:#f4f7f3}
+.public-header{max-width:none;background:#fff;padding:18px max(28px,calc((100vw - 1240px)/2));border-bottom:1px solid #e3ebe4}
+.public-brand{gap:20px}.public-brand img{width:104px;height:92px;max-height:none;background:transparent;padding:0;border-radius:0;object-fit:contain}
+.public-brand>span{font-size:12px;font-weight:700;letter-spacing:1px;line-height:1.5;color:#22583e}
+.public-brand>span>span{font-size:13px;font-weight:500;letter-spacing:0;color:#667a6c;margin-top:4px}
+.staff-link{border-radius:10px;background:#f7faf7;border-color:#dce6df;color:#22583e;min-height:44px}
+.action-card{position:relative;border-radius:16px;padding:28px 28px 28px 92px;box-shadow:0 4px 20px #173f2d04}
+.action-icon{position:absolute;left:24px;top:28px;width:44px;height:44px;padding:10px;border-radius:12px;background:#edf4ee;color:#22583e}
+.primary-action{padding:32px 28px 32px 92px;background:#22583e;box-shadow:0 12px 30px #173f2d16}.primary-action .action-icon{background:#ffffff18;color:#dbeccc}
+.hero-copy h1{font-weight:650;letter-spacing:-1.8px}.hero-description{color:#536b5c}.action-card-text{color:#5f7567}
+.form-section,.request-summary,.review-card,.receipt-card,.lookup-card,.lookup-results{border-radius:16px;border-color:#dde7df;box-shadow:0 4px 20px #173f2d03}
+.category-field{gap:14px}.category-field .category-tile{padding:22px 18px 20px;gap:12px;border-radius:12px;border-color:#dce5de;background:#fbfdfb;transition:border-color .16s,background .16s,box-shadow .16s}
+.category-field .category-tile:hover{border-color:#8bae98;background:#f6faf5}
+.category-field .category-tile:has(input:checked){background:#eff6ec;border-color:#527d43;box-shadow:0 0 0 1px #527d43}
+.category-symbol{display:grid;place-items:center;width:48px;height:48px;border-radius:12px;background:#eaf2ec;color:#22583e}
+.category-symbol .ui-icon{width:27px;height:27px;stroke-width:1.6}
+.category-tile:has(input:checked) .category-symbol{background:#dceace;color:#285b32}
+.category-field .category-tile strong{font-size:15px;font-weight:650;color:#183d2e;line-height:1.3}
+.category-field .category-tile small{font-size:12px;color:#5c7162;line-height:1.5}
+.category-field .category-tile input{right:14px;top:14px;width:18px;min-height:18px;accent-color:#22583e}
+.request-site input,.request-site select,.request-site textarea{border-radius:9px;border-color:#d3dfd5;background:#fcfdfb}
+.section-title>span{background:#edf4ee;color:#22583e;font-weight:700;border-color:#dce8de}
+.public-button,.outline-button{border-radius:10px}.add-line{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;color:#22583e;border-color:#abc3af}.summary-note>.ui-icon{margin-top:3px;flex-shrink:0}
+.public-footer{color:#5b7162}.success-mark .ui-icon{width:30px;height:30px}
+@media(max-width:760px){.public-header{padding:14px 18px;gap:12px}.public-brand img{width:88px;height:78px}.public-brand>span{display:block;font-size:10px;padding-left:14px;letter-spacing:.5px}.public-brand>span>span{font-size:11px}.staff-link{font-size:11px;padding:10px;gap:8px}.action-card,.primary-action{padding:24px 20px 24px 82px}.action-icon{left:20px;top:24px;width:42px;height:42px}.category-field{gap:10px}.category-field .category-tile{padding:18px 12px}.category-field .category-tile strong{font-size:13px}.category-field .category-tile small{font-size:11px}.category-symbol{width:42px;height:42px}.hero-copy h1{font-size:36px}.demo-notice{font-size:12px}}
+@media(max-width:520px){.public-brand>span{display:none}.category-field{grid-template-columns:1fr}.category-field .category-tile{grid-template-columns:48px minmax(0,1fr);grid-template-areas:"icon title" "icon caption";column-gap:16px;row-gap:4px;padding:16px 46px 16px 16px;min-height:84px}.category-symbol{grid-area:icon;width:48px;height:48px}.category-field .category-tile strong{grid-area:title;font-size:15px;align-self:end}.category-field .category-tile small{grid-area:caption;font-size:12px}.category-field .category-tile input{top:calc(50% - 9px);right:16px}.staff-link .ui-icon{width:18px;height:18px}}
+@media(prefers-reduced-motion:reduce){.category-field .category-tile{transition:none}}

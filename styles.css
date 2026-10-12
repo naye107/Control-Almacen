@@ -934,3 +934,22 @@ body[data-role="ALMACENERO"] button[data-action] { display: none !important; }
 @media (max-width: 700px) { .public-content { padding: 16px; } }
 
 .demo-notice{position:relative;z-index:1000;background:#fff3cd;color:#513f00;padding:12px 18px;text-align:center;font:500 14px/1.5 system-ui,sans-serif;border-bottom:2px solid #e0bc50}.demo-notice strong{display:inline-block;margin-right:6px}
+
+/* JAPURIMA corporate interface refresh — presentation only. */
+:root{--brand:#22583e;--brand-strong:#173f2d;--brand-soft:#e6f0e9;--radius:12px;--shadow:0 8px 28px rgba(23,63,45,.06)}
+body{font-family:Inter,"Segoe UI",system-ui,-apple-system,sans-serif}
+.ui-icon{display:inline-block;width:21px;height:21px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
+button:focus-visible,a:focus-visible{outline:3px solid #7caa8f;outline-offset:3px}
+.login-card{border-radius:20px;padding:32px;box-shadow:0 20px 60px #133e2d24}
+.login-logo{width:168px;max-width:100%;height:150px;object-fit:contain;margin-bottom:8px}
+.sidebar{background:#153d2c}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-logo{width:88px;height:80px;flex:0 0 auto;background:#fff;border-radius:12px;padding:5px;object-fit:contain}
+.brand strong{font-size:1rem;letter-spacing:.3px}.brand small{font-size:12px;line-height:1.5}
+.nav-item{display:flex;align-items:center;gap:12px;min-height:44px;padding:12px 14px;border-radius:10px;font-size:14px;font-weight:500}
+.nav-item .ui-icon{width:20px;height:20px;color:#a5c7b4}
+.nav-item.active{background:#ffffff18;box-shadow:inset 3px 0 #a6cc83;font-weight:650}.nav-item.active .ui-icon{color:#c9e7ac}
+#logout-button{display:flex;justify-content:center;align-items:center;gap:10px}
+.metric,.panel,.toolbar-panel{border-radius:14px;box-shadow:0 4px 18px #193e2c05}
+@media(max-width:1000px) and (min-width:701px){.nav-list{grid-template-columns:repeat(4,minmax(0,1fr))}.nav-item{justify-content:center;padding:10px 6px;gap:7px;font-size:12px}}
+@media(max-width:700px){.brand-logo{width:72px;height:65px}.nav-item{min-height:44px}.sidebar.nav-open .nav-list{max-height:440px}.login-card{padding:26px}.login-logo{width:150px;height:135px}}

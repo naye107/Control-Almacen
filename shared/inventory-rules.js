@@ -100,6 +100,34 @@ function parsePresentationQuantity(presentation) {
   };
 }
 
+function divideDecimalByThousand(value) {
+  const text = String(value ?? "").trim().replace(",", ".");
+  const match = text.match(/^(\d+)(?:\.(\d+))?$/);
+  if (!match) return null;
+
+  const fraction = match[2] || "";
+  const scale = fraction.length + 3;
+  const digits = `${match[1]}${fraction}`.replace(/^0+(?=\d)/, "").padStart(scale + 1, "0");
+  const whole = digits.slice(0, -scale).replace(/^0+(?=\d)/, "") || "0";
+  const decimals = digits.slice(-scale).replace(/0+$/, "");
+  return decimals ? `${whole}.${decimals}` : whole;
+}
+
+function formatCompactPhysicalQuantity(quantity, unit) {
+  const text = String(quantity ?? "").trim();
+  const normalizedUnit = String(unit || "").trim();
+  const numeric = text.replace(",", ".");
+  const integer = numeric.match(/^(\d+)(?:\.\d+)?$/)?.[1]?.replace(/^0+(?=\d)/, "") || "";
+  const atLeastThousand = integer.length > 3 || (integer.length === 4 && integer >= "1000");
+
+  if (atLeastThousand && (normalizedUnit === "g" || normalizedUnit === "ml")) {
+    const converted = divideDecimalByThousand(numeric);
+    if (converted !== null) return `${converted} ${normalizedUnit === "g" ? "kg" : "L"}`;
+  }
+
+  return `${text} ${normalizedUnit}`.trim();
+}
+
 function getPreferredPhysicalUnit(info) {
   const options = getPhysicalUnitOptions(info);
   return options?.[0] || null;
@@ -225,5 +253,5 @@ function getOutputAllocations(output, product) { return Array.isArray(output.all
 function isBeforeDateRange(date, range) { return Boolean(range.from && date && date < range.from); }
 function isDateInRange(date, range) { return (!range.from || Boolean(date && date >= range.from)) && (!range.to || Boolean(date && date <= range.to)); }
 
-return { getPresentationInfo,parsePresentationQuantity,getPreferredPhysicalUnit,getPhysicalUnitOptions,getOutputQuantityConversion, getPresentationBreakdown, getOutputAllocations };
+return { getPresentationInfo,parsePresentationQuantity,formatCompactPhysicalQuantity,getPreferredPhysicalUnit,getPhysicalUnitOptions,getOutputQuantityConversion, getPresentationBreakdown, getOutputAllocations };
 });

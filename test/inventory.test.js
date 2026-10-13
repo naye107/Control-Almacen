@@ -1,5 +1,11 @@
 'use strict';
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const {validateChange}=require('../src/inventory-service');const rules=require('../shared/inventory-rules');const {fixture}=require('./helpers');
+test('abrevia cantidades fisicas grandes sin alterar el valor',()=>{
+ assert.equal(rules.formatCompactPhysicalQuantity('850000','g'),'850 kg');
+ assert.equal(rules.formatCompactPhysicalQuantity('2500','ml'),'2.5 L');
+ assert.equal(rules.formatCompactPhysicalQuantity('999','g'),'999 g');
+ assert.equal(rules.formatCompactPhysicalQuantity('17','sacos'),'17 sacos');
+});
 test('compatibilidad de inventario histórico ficticio: 3 productos y movimientos sin campos nuevos',()=>{
  const original=JSON.parse(fs.readFileSync('test/fixtures/legacy-inventory.json','utf8'));const before=JSON.stringify(original);const result=validateChange(original,structuredClone(original));assert.equal(JSON.stringify(result.state),before);assert.equal(result.changes.length,0);
  assert.deepEqual(original.products.map(p=>rules.getPresentationBreakdown(original,p).reduce((n,b)=>n+b.stock,0)),[38,10,12]);

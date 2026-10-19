@@ -877,7 +877,7 @@ function resetPurchaseLines() {
 }
 
 function resetQuickProductForm() {
-  document.querySelector("#quick-product-request-category").value = "";
+  document.querySelector("#quick-product-request-category").value = "AGROQUIMICOS";
   document.querySelector("#quick-product-name").value = "";
   document.querySelector("#quick-product-active-ingredient").value = "";
   document.querySelector("#quick-product-category").value = "";
@@ -1562,8 +1562,8 @@ function renderAll() {
 }
 
 function resetProductForm() {
-  document.querySelector("#product-request-category").value = "";
   productForm.reset();
+  document.querySelector("#product-request-category").value = "AGROQUIMICOS";
   document.querySelector("#product-id").value = "";
   document.querySelector("#product-active-ingredient").value = "";
   document.querySelector("#product-opening-stock").value = "0";

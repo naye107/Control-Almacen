@@ -14,6 +14,11 @@ function decimal(value){const whole=value/SCALE;const fraction=(value%SCALE).toS
 function normalize(value){return decimal(scaled(value));}
 function multiply(a,b){const result=scaled(a)*scaled(b);if(result%SCALE!==0n)fail('QUANTITY_PRECISION');const value=result/SCALE;if(value>MAX)fail('QUANTITY_TOO_LARGE');return decimal(value);}
 function unitOptions(product){
+ if(inventory.isTotalProduct(product)){
+  inventory.totalPresentation(product.unit);
+  const dimension=product.unit==='kg'?'weight':product.unit==='L'?'volume':'packages:unidad';
+  return [{unit:product.unit,label:product.unit,dimension,baseUnit:product.unit==='kg'?'g':product.unit==='L'?'ml':'unidad',factor:product.unit==='unidad'?'1':'1000'}];
+ }
  if(product.requestCategory==='HERRAMIENTAS')return [{unit:product.unit,label:product.unit,dimension:'packages:'+product.unit,baseUnit:product.unit,factor:'1'}];
  const info=inventory.getPresentationInfo(product.presentation);
  const options=(inventory.getPhysicalUnitOptions(info)||[]).map(u=>({unit:u.unit,label:u.label,dimension:info.group==='units'?u.unit:info.group,baseUnit:info.group==='weight'?'g':info.group==='volume'?'ml':u.unit,factor:String(u.baseFactor)}));
@@ -21,7 +26,7 @@ function unitOptions(product){
  if(!options.some(o=>o.unit===product.unit||o.label===product.unit))options.push({unit:product.unit,label:product.unit,dimension:'packages:'+product.unit,baseUnit:product.unit,factor:'1'});
  return options;
 }
-function convert(quantity,unit,product){const option=unitOptions(product).find(o=>o.unit===unit);if(!option)fail('INCOMPATIBLE_UNIT');return {baseQuantity:multiply(quantity,option.factor),baseUnit:option.baseUnit,dimension:option.dimension};}
+function convert(quantity,unit,product){const option=unitOptions(product).find(o=>o.unit===unit);if(!option)fail('INCOMPATIBLE_UNIT');if(inventory.isTotalProduct(product)&&unit==='unidad'&&scaled(quantity)%SCALE!==0n)fail('WHOLE_UNITS_REQUIRED');return {baseQuantity:multiply(quantity,option.factor),baseUnit:option.baseUnit,dimension:option.dimension};}
 function calculateLine({category,containerCount,product,doseQuantity,quantity,unit}){
  if(!Object.hasOwn(CATEGORIES,category))fail('INVALID_CATEGORY');
  const total=category==='AGROQUIMICOS'?multiply(doseQuantity,containerCount):normalize(quantity);

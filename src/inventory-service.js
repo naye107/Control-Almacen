@@ -5,7 +5,7 @@ const rules = require('../shared/inventory-rules');
 const fail = code => { throw new AppError(422, code); };
 const EPS = 1e-6;
 const KEYS = {
- products: ['id','name','activeIngredient','category','requestCategory','presentation','unit','openingStock','minStock','active','expired','createdAt'],
+ products: ['id','name','activeIngredient','category','requestCategory','presentation','unit','quantityBasis','openingStock','minStock','active','expired','createdAt'],
  purchases: ['id','productId','date','presentation','supplier','quantity','lot','doc'],
  outputs: ['id','productId','date','presentation','destination','quantity','allocations','usedQuantity','usedUnit','quantityMode','calculationMode','doseQuantity','doseUnit','doseContainerCount','doseContainerType','reason','responsible','dispatchId','dispatchItemId','dispatchCode']
 };
@@ -13,6 +13,7 @@ function positive(value, zero = false) { if (typeof value !== 'number' || !Numbe
 function text(value, required = false) { if ((required && (typeof value !== 'string' || !value.trim())) || (value !== undefined && (typeof value !== 'string' || value.length > 500))) fail('INVALID_TEXT'); }
 function date(value) { if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10) !== value) fail('INVALID_DATE'); }
 function same(a,b) { return isDeepStrictEqual(a,b); }
+function totalQuantity(value,unit){positive(value,true);if(!/^\d+(?:\.\d{1,6})?$/.test(String(value)))fail('QUANTITY_PRECISION');if(unit==='unidad'&&!Number.isInteger(value))fail('WHOLE_UNITS_REQUIRED');}
 function validateChange(previous, proposed, linkedOutputs = [], requestProducts = [], generatedOutputs = []) {
  if (!proposed || typeof proposed !== 'object' || Object.keys(proposed).some(k=>!Object.hasOwn(KEYS,k))) fail('INVALID_STATE');
  const next = structuredClone(proposed);
@@ -35,6 +36,12 @@ function validateChange(previous, proposed, linkedOutputs = [], requestProducts 
    if (before) item = next[collection][index] = { ...before, ...item };
    diff.push({collection,id:item.id,before:before||null,after:item});
    if (collection==='products') {
+    if(!before||rules.isTotalProduct(before)||rules.isTotalProduct(item)){
+     if(!rules.isTotalProduct(item)||!Object.hasOwn(rules.TOTAL_UNITS,item.unit))fail('TOTAL_UNIT_REQUIRED');
+     if(before&&!rules.isTotalProduct(before))fail('RESET_REQUIRED_FOR_TOTAL_UNITS');
+     if(item.presentation!==rules.totalPresentation(item.unit))fail('TOTAL_PRESENTATION_NOT_EDITABLE');
+     totalQuantity(item.openingStock,item.unit);totalQuantity(item.minStock,item.unit);
+    }
     for (const key of ['name','category','presentation','unit']) text(item[key],true);
     text(item.activeIngredient);
     if(item.requestCategory!==undefined && !['','AGROQUIMICOS','HERRAMIENTAS','OTROS'].includes(item.requestCategory)) fail('INVALID_REQUEST_CATEGORY');
@@ -45,6 +52,12 @@ function validateChange(previous, proposed, linkedOutputs = [], requestProducts 
    } else {
     const product = next.products.find(p=>p.id===item.productId);
     if (!product) fail('PRODUCT_NOT_FOUND');
+    if(rules.isTotalProduct(product)){
+     if(item.presentation!==rules.totalPresentation(product.unit))fail('TOTAL_PRESENTATION_NOT_EDITABLE');
+     totalQuantity(item.quantity,product.unit);
+     if(item.allocations?.some(a=>a.presentation!==product.presentation))fail('TOTAL_PRESENTATION_NOT_EDITABLE');
+     if(item.usedUnit!==undefined&&item.usedUnit!==product.unit)fail('INCOMPATIBLE_UNIT');
+    }
     date(item.date); positive(item.quantity); text(item.presentation);
     if (collection==='purchases') { text(item.supplier,true); text(item.lot); text(item.doc); }
     else {

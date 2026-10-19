@@ -121,7 +121,7 @@ const outputForm = document.querySelector("#output-form");
 
 const formatNumber = new Intl.NumberFormat("es-PE", {
   minimumFractionDigits: 0,
-  maximumFractionDigits: 2
+  maximumFractionDigits: 6
 });
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -311,7 +311,7 @@ async function saveState(retry = false) {
     const payload = await response.json();
     if (!response.ok) {
       if (response.status === 401) showLogin('Sesion vencida. Su operacion pendiente se conserva.');
-      const messages = { STATE_CONFLICT: 'Otro usuario actualizo el inventario. Descargue la copia pendiente y cargue el estado actual antes de volver a registrar.', INSUFFICIENT_STOCK: 'El servidor rechazo el cambio por stock insuficiente.', HISTORICAL_UNIT_OR_PRESENTATION_IMMUTABLE: 'No se puede cambiar la unidad o presentacion de un producto con historial.' };
+      const messages = { TOTAL_UNIT_REQUIRED: 'Solo se permiten kg, L o unidad.', TOTAL_PRESENTATION_NOT_EDITABLE: 'La cantidad se registra en la unidad total del producto.', WHOLE_UNITS_REQUIRED: 'Para unidad, introduce cantidades enteras.', RESET_REQUIRED_FOR_TOTAL_UNITS: 'Este producto conserva el formato historico; no se convertira automaticamente.', STATE_CONFLICT: 'Otro usuario actualizo el inventario. Descargue la copia pendiente y cargue el estado actual antes de volver a registrar.', INSUFFICIENT_STOCK: 'El servidor rechazo el cambio por stock insuficiente.', HISTORICAL_UNIT_OR_PRESENTATION_IMMUTABLE: 'No se puede cambiar la unidad o presentacion de un producto con historial.' };
       throw new Error(messages[payload.error] || 'No se guardo: ' + payload.error);
     }
     // The acknowledged payload is durable; clear pending only after a positive response.
@@ -539,6 +539,7 @@ function formatPhysicalTotal(group, value, unit = "unidades") {
 }
 
 function formatTotalQuantity(product, options = {}) {
+  if(InventoryRules.isTotalProduct(product)) return `${formatNumber.format(getPresentationBreakdown(product,[],options).reduce((n,b)=>n+b.stock,0))} ${product.unit}`;
   const totals = new Map();
   const breakdown = getPresentationBreakdown(product, [], options);
 
@@ -566,6 +567,7 @@ function formatTotalQuantity(product, options = {}) {
 }
 
 function presentationSummary(product) {
+  if (InventoryRules.isTotalProduct(product)) return product.unit;
   const breakdown = getPresentationBreakdown(product);
   const withStock = breakdown.filter((item) => item.stock !== 0);
   const source = withStock.length ? withStock : breakdown;
@@ -639,6 +641,7 @@ function getPreferredPhysicalUnit(info) { return InventoryRules.getPreferredPhys
 function getPhysicalUnitOptions(info) { return InventoryRules.getPhysicalUnitOptions(info); }
 
 function getOutputQuantityOptions(product, presentation) {
+  if(InventoryRules.isTotalProduct(product)) return [{value:"units",label:product.unit}];
   const options = [];
   const info = getPresentationInfo(presentation || product.presentation);
   const physicalUnits = getPhysicalUnitOptions(info) || [];
@@ -678,6 +681,7 @@ function formatOutputQuantity(output, product) {
 }
 
 function formatOutputPresentation(output, product) {
+  if(InventoryRules.isTotalProduct(product)) return product.unit;
   const allocations = getOutputAllocations(output, product)
     .map((allocation) => allocation.presentation)
     .filter(Boolean);
@@ -819,6 +823,7 @@ function fillPurchaseLineProductOptions(row, selectedId = "") {
 function updatePurchaseLinePresentation(row) {
   const product = getProduct(row.querySelector(".purchase-line-product").value);
   row.querySelector(".purchase-line-presentation").value = product?.presentation || "";
+  row.querySelector(".purchase-line-base-unit").textContent = product?.unit || "";
 }
 
 function addPurchaseLine(item = {}) {
@@ -829,10 +834,10 @@ function addPurchaseLine(item = {}) {
       <select class="purchase-line-product"></select>
     </td>
     <td>
-      <input class="purchase-line-presentation" autocomplete="off" placeholder="Saco 25 kg">
+      <input class="purchase-line-presentation" type="hidden"><span class="purchase-line-base-unit"></span>
     </td>
     <td>
-      <input class="purchase-line-quantity" type="number" min="0.01" step="0.01">
+      <input class="purchase-line-quantity" type="number" min="0.000001" step="0.000001">
     </td>
     <td>
       <input class="purchase-line-lot" autocomplete="off" placeholder="Lote">
@@ -872,8 +877,7 @@ function resetQuickProductForm() {
   document.querySelector("#quick-product-name").value = "";
   document.querySelector("#quick-product-active-ingredient").value = "";
   document.querySelector("#quick-product-category").value = "";
-  document.querySelector("#quick-product-presentation").value = "";
-  document.querySelector("#quick-product-unit").value = "sacos";
+  document.querySelector("#quick-product-unit").value = "kg";
   document.querySelector("#quick-product-min-stock").value = "0";
 }
 
@@ -893,7 +897,8 @@ async function saveQuickProduct() {
     activeIngredient: document.querySelector("#quick-product-active-ingredient").value.trim(),
     category: document.querySelector("#quick-product-category").value.trim(),
     requestCategory: document.querySelector("#quick-product-request-category").value,
-    presentation: document.querySelector("#quick-product-presentation").value.trim(),
+    quantityBasis: 'TOTAL',
+    presentation: InventoryRules.totalPresentation(document.querySelector("#quick-product-unit").value),
     unit: document.querySelector("#quick-product-unit").value,
     openingStock: 0,
     minStock: toNumber(document.querySelector("#quick-product-min-stock").value)
@@ -909,7 +914,7 @@ async function saveQuickProduct() {
       && normalize(product.presentation) === normalize(data.presentation);
   });
   if (duplicate) {
-    showToast("Ese producto y presentacion ya estan registrados.");
+    showToast("Ese producto y unidad ya estan registrados.");
     return;
   }
 
@@ -941,6 +946,7 @@ async function saveQuickProduct() {
 function syncPurchaseLineProductOptions() {
   getPurchaseLineRows().forEach((row) => {
     fillPurchaseLineProductOptions(row);
+    updatePurchaseLinePresentation(row);
   });
 }
 
@@ -974,6 +980,7 @@ function fillOutputLineProductOptions(row, selectedId = "") {
 function updateOutputLinePresentation(row) {
   const product = getProduct(row.querySelector(".output-line-product").value);
   row.querySelector(".output-line-presentation").value = product?.presentation || "";
+  row.querySelector(".output-line-base-unit").textContent = product?.unit || "";
 }
 
 function updateOutputLineQuantityUnitOptions(row, preferredMode = "") {
@@ -1032,7 +1039,9 @@ function updateOutputLineStock(row) {
   const doseQuantity = toNumber(row.querySelector(".output-line-quantity").value);
   const doseCount = getDoseContainerCount();
   const showDoseTotal = isApplicationDoseMode() && doseQuantity > 0 && doseCount > 0;
-  const stockLabel = String(unitMode || "").startsWith("physical") && info.baseValue !== null
+  const stockLabel = product.quantityBasis === "TOTAL"
+    ? `${formatNumber.format(getPresentationStock(product, presentation))} ${product.unit}`
+    : String(unitMode || "").startsWith("physical") && info.baseValue !== null
     ? formatPhysicalTotal(info.group, getCompatiblePhysicalStock(product, info.group), info.unit)
     : `${formatNumber.format(getPresentationStock(product, presentation))} ${product.unit}${info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * getPresentationStock(product, presentation), info.unit)})`}`;
 
@@ -1084,10 +1093,10 @@ function addOutputLine(item = {}) {
       <select class="output-line-product"></select>
     </td>
     <td>
-      <input class="output-line-presentation" autocomplete="off" placeholder="Saco 25 kg">
+      <input class="output-line-presentation" type="hidden"><span class="output-line-base-unit"></span>
     </td>
     <td>
-      <input class="output-line-quantity" type="number" min="0.01" step="0.01">
+      <input class="output-line-quantity" type="number" min="0.000001" step="0.000001">
     </td>
     <td>
       <select class="output-line-unit"></select>
@@ -1126,6 +1135,7 @@ function resetOutputLines() {
 function syncOutputLineProductOptions() {
   getOutputLineRows().forEach((row) => {
     fillOutputLineProductOptions(row);
+    updateOutputLinePresentation(row);
     updateOutputLineQuantityUnitOptions(row);
     updateOutputLineStock(row);
   });
@@ -1239,11 +1249,11 @@ function saveCurrentOutputTemplate() {
 function renderMetrics() {
   const activeProducts = state.products.filter((product) => product.active !== false);
   const stats = activeProducts.map(getProductStats);
-  const totalStock = stats.reduce((sum, item) => sum + item.stock, 0);
+  const stockByUnit=new Map();activeProducts.forEach((p,i)=>stockByUnit.set(p.unit,(stockByUnit.get(p.unit)||0)+stats[i].stock));
   const lowCount = stats.filter((item) => item.low).length;
 
   elements.metricProducts.textContent = activeProducts.length;
-  elements.metricStock.textContent = formatNumber.format(totalStock);
+  elements.metricStock.textContent = [...stockByUnit].map(([unit,stock])=>formatNumber.format(stock)+' '+unit).join(' · ')||'0';
   elements.metricAlerts.textContent = lowCount;
 }
 
@@ -1369,7 +1379,7 @@ function renderPurchases() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((purchase) => {
       const product = getProduct(purchase.productId);
-      const presentation = purchase.presentation || product?.presentation || "-";
+      const presentation = InventoryRules.isTotalProduct(product) ? product.unit : purchase.presentation || product?.presentation || "-";
       return `
         <tr>
           <td>${escapeHtml(purchase.date)}</td>
@@ -1401,7 +1411,7 @@ function renderOutputs() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((output) => {
       const product = getProduct(output.productId);
-      const presentation = formatOutputPresentation(output, product);
+      const presentation = InventoryRules.isTotalProduct(product) ? product.unit : formatOutputPresentation(output, product);
       return `
         <tr>
           <td>${escapeHtml(output.date)}</td>
@@ -1566,7 +1576,8 @@ async function handleProductSubmit(event) {
     activeIngredient: document.querySelector("#product-active-ingredient").value.trim(),
     category: document.querySelector("#product-category").value,
     requestCategory: document.querySelector("#product-request-category").value,
-    presentation: document.querySelector("#product-presentation").value.trim(),
+    quantityBasis: 'TOTAL',
+    presentation: InventoryRules.totalPresentation(document.querySelector("#product-unit").value),
     unit: document.querySelector("#product-unit").value,
     openingStock: toNumber(document.querySelector("#product-opening-stock").value),
     minStock: toNumber(document.querySelector("#product-min-stock").value)
@@ -1644,7 +1655,7 @@ async function handlePurchaseSubmit(event) {
     }
 
     if (!line.presentation) {
-      showToast(`Indique la presentacion de ${line.product.name}.`);
+      showToast(`Verifique la unidad de ${line.product.name}.`);
       return;
     }
 
@@ -1713,7 +1724,11 @@ async function handleOutputSubmit(event) {
   const plannedOutputs = [];
 
   for (const line of filledLines) {
-    const effectiveQuantity = doseMode ? line.quantity * containerCount : line.quantity;
+    let effectiveQuantity = doseMode ? line.quantity * containerCount : line.quantity;
+    if (doseMode && line.product?.quantityBasis === 'TOTAL') {
+      try { effectiveQuantity = Number(RequestRules.multiply(line.quantity, containerCount)); }
+      catch { showToast('La cantidad total debe tener como máximo seis decimales.'); return; }
+    }
 
     if (!line.product) {
       showToast("Seleccione un producto en todas las filas.");
@@ -1721,7 +1736,7 @@ async function handleOutputSubmit(event) {
     }
 
     if (!line.presentation) {
-      showToast(`Indique la presentacion de ${line.product.name}.`);
+      showToast(`Verifique la unidad de ${line.product.name}.`);
       return;
     }
 
@@ -1732,7 +1747,7 @@ async function handleOutputSubmit(event) {
 
     const conversion = getOutputQuantityConversion(line.product, line.presentation, effectiveQuantity, line.unitMode);
     if (!conversion) {
-      showToast(`No se pudo convertir la presentacion de ${line.product.name}.`);
+      showToast(`No se pudo validar la unidad de ${line.product.name}.`);
       return;
     }
 
@@ -1801,7 +1816,6 @@ function editProduct(productId) {
   document.querySelector("#product-active-ingredient").value = product.activeIngredient || "";
   document.querySelector("#product-category").value = product.category;
   document.querySelector("#product-request-category").value = product.requestCategory || "";
-  document.querySelector("#product-presentation").value = product.presentation;
   document.querySelector("#product-unit").value = product.unit;
   document.querySelector("#product-opening-stock").value = product.openingStock;
   document.querySelector("#product-min-stock").value = product.minStock;
@@ -1925,7 +1939,7 @@ function printView(viewName) {
 
 function exportCsv() {
   const rows = [
-    ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Cantidad", "Stock minimo", "Estado"]
+    ["Nombre comercial", "Materia activa", "Categoria", "Unidad", "Unidad", "Stock inicial", "Compras", "Salidas", "Stock actual", "Cantidad", "Stock minimo", "Estado"]
   ];
 
   state.products.forEach((product) => {
@@ -1971,7 +1985,7 @@ function exportStockExcel() {
     [xlsxText("Reporte de existencias", 2)],
     [xlsxText("Desde", 2), dateRange.from || "Inicio", xlsxText("Hasta", 2), dateRange.to || "Actual"],
     [],
-    ["Nombre comercial", "Materia activa", "Categoria", "Presentacion", "Inicial", "Compras", "Salidas", "Stock", "Cantidad", "Minimo", "Estado"].map((value) => xlsxText(value, 2))
+    ["Nombre comercial", "Materia activa", "Categoria", "Unidad", "Inicial", "Compras", "Salidas", "Stock", "Cantidad", "Minimo", "Estado"].map((value) => xlsxText(value, 2))
   ];
 
   rows.forEach(({ product, stats }) => {
@@ -2011,7 +2025,7 @@ function exportPurchasesExcel() {
     [xlsxText("Reporte de compras", 2)],
     [xlsxText("Generado", 2), today()],
     [],
-    ["Fecha", "Producto", "Presentacion", "Proveedor", "Documento", "Cantidad", "Lote"].map((value) => xlsxText(value, 2))
+    ["Fecha", "Producto", "Unidad", "Proveedor", "Documento", "Cantidad", "Lote"].map((value) => xlsxText(value, 2))
   ];
 
   purchases.forEach((purchase) => {
@@ -2019,7 +2033,7 @@ function exportPurchasesExcel() {
     reportRows.push([
       purchase.date || "",
       product?.name || "Producto eliminado",
-      purchase.presentation || product?.presentation || "",
+      InventoryRules.isTotalProduct(product) ? product.unit : purchase.presentation || product?.presentation || "",
       purchase.supplier || "",
       purchase.doc || "",
       xlsxNumber(purchase.quantity),
@@ -2048,7 +2062,7 @@ function exportOutputsExcel() {
     [xlsxText("Reporte de salidas", 2)],
     [xlsxText("Generado", 2), today()],
     [],
-    ["Fecha", "Producto", "Presentacion", "Destino", "Cantidad", "Motivo", "Responsable"].map((value) => xlsxText(value, 2))
+    ["Fecha", "Producto", "Unidad", "Destino", "Cantidad", "Motivo", "Responsable"].map((value) => xlsxText(value, 2))
   ];
 
   outputs.forEach((output) => {

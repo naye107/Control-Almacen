@@ -6,7 +6,7 @@ const rules=require('../shared/request-rules');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const status=value=>({REGISTRADA:'PENDIENTE',PARCIAL:'PARCIALMENTE_DESPACHADA'}[value]||value);
 function publicRequest(r){
- const result={code:r.code,status:status(r.status),createdAt:r.createdAt,items:r.items.map(i=>({product:i.productSnapshot.name,presentation:i.presentation,quantity:i.quantity,unit:i.unit,...(r.requestVersion===2?{lineNumber:i.lineNumber,doseQuantity:i.doseQuantity}: {})}))};
+ const result={code:r.code,status:status(r.status),createdAt:r.createdAt,items:r.items.map(i=>({product:i.productSnapshot.name,presentation:i.presentation,quantity:i.quantity,unit:i.unit,quantityBasis:i.productSnapshot.quantityBasis,...(r.requestVersion===2?{lineNumber:i.lineNumber,doseQuantity:i.doseQuantity}: {})}))};
  if(r.requestVersion===2)Object.assign(result,{requestVersion:2,category:r.category,requester:r.requester,destination:r.destination,notes:r.notes,crop:r.crop,applicationMode:r.applicationMode,containerCount:r.containerCount});return result;
 }
 function cleanText(value,required,max){if(value===undefined&&!required)return '';if(typeof value!=='string'||value.trim().length>max||(required&&!value.trim()))throw new AppError(422,'INVALID_REQUEST_TEXT');return value.trim();}
@@ -35,7 +35,7 @@ function legacyMatches(existing,input){
 }
 class RequestService{
  constructor(store){this.store=store;}
- async catalog(category){if(category&&!Object.hasOwn(rules.CATEGORIES,category))throw new AppError(422,'INVALID_CATEGORY');const {state}=await this.store.transact(tx=>tx.getInventory());return state.products.filter(p=>rules.eligible(p,category)).map(p=>({id:p.id,name:p.name,presentation:p.presentation,unit:p.unit,requestCategory:p.requestCategory,unitOptions:rules.unitOptions(p)}));}
+ async catalog(category){if(category&&!Object.hasOwn(rules.CATEGORIES,category))throw new AppError(422,'INVALID_CATEGORY');const {state}=await this.store.transact(tx=>tx.getInventory());return state.products.filter(p=>rules.eligible(p,category)).map(p=>({id:p.id,name:p.name,presentation:p.presentation,unit:p.unit,requestCategory:p.requestCategory,quantityBasis:p.quantityBasis,unitOptions:rules.unitOptions(p)}));}
  async register(input){
   if(!input||typeof input!=='object'||(typeof input.operationId!=='string'||!UUID.test(input.operationId))||typeof input.privateKey!=='string'||!/^[A-Za-z0-9_-]{32,128}$/.test(input.privateKey))throw new AppError(422,'PRIVATE_KEY_AND_OPERATION_REQUIRED');
   const operationId=input.operationId.toLowerCase();const code='JAP-'+digest(operationId).slice(0,20).toUpperCase();
@@ -51,7 +51,7 @@ class RequestService{
    const items=normalized.items.map((item,index)=>{
     const product=inventory.state.products.find(p=>p.id===item.productId);if(!product||!rules.eligible(product,normalized.category))throw new AppError(422,'PRODUCT_NOT_AVAILABLE_IN_CATEGORY');
     const calculation=rules.calculateLine({...item,category:normalized.category,containerCount:normalized.containerCount,product});
-    return {id:crypto.randomUUID(),lineNumber:index+1,productId:product.id,productSnapshot:{name:product.name,unit:product.unit,presentation:product.presentation,requestCategory:product.requestCategory},presentation:product.presentation,unit:item.unit,...calculation};
+    return {id:crypto.randomUUID(),lineNumber:index+1,productId:product.id,productSnapshot:{name:product.name,unit:product.unit,presentation:product.presentation,requestCategory:product.requestCategory,quantityBasis:product.quantityBasis},presentation:product.presentation,unit:item.unit,...calculation};
    });
    const request={id:crypto.randomUUID(),code,privateKeyHash:digest(input.privateKey),...normalized,items,operationId,payloadHash:digest(JSON.stringify(normalized)),status:'PENDIENTE',createdAt:new Date().toISOString()};
    await tx.putRequest(request);await tx.audit({action:'REQUEST_PUBLIC_CREATE',entityId:request.id,details:{requestVersion:2,category:request.category,itemCount:items.length}});return publicRequest(request);

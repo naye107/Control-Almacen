@@ -957,3 +957,5 @@ button:focus-visible,a:focus-visible{outline:3px solid #7caa8f;outline-offset:3p
 .role-help{padding:14px 16px;border:1px solid #dbe7dd;border-radius:10px;background:#f4f8f2;color:#31563d;font-size:13px;line-height:1.7;margin:0 0 18px}
 body:not([data-role="ADMINISTRADOR"]) #view-products .actions-cell,body:not([data-role="ADMINISTRADOR"]) #view-products th:last-child{display:none}
 #users-table select{min-width:150px;min-height:40px;border:1px solid #ccdacc;border-radius:8px;background:#fff;padding:8px;color:#214330;font-size:13px}
+
+#metric-stock{font-size:1.1rem;line-height:1.4;overflow-wrap:anywhere}

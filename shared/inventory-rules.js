@@ -1,5 +1,8 @@
 (function(root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.InventoryRules = factory(); })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
 'use strict';
+const TOTAL_UNITS=Object.freeze({kg:'1 kg',L:'1 L',unidad:'1 unidad'});
+function isTotalProduct(product){return product?.quantityBasis==='TOTAL';}
+function totalPresentation(unit){if(!Object.hasOwn(TOTAL_UNITS,unit))throw new Error('TOTAL_UNIT_REQUIRED');return TOTAL_UNITS[unit];}
 const normalize = value => String(value || '').trim().toLowerCase();
 const toNumber = value => Number.parseFloat(value || '0');
 function getPresentationInfo(presentation) {
@@ -225,5 +228,5 @@ function getOutputAllocations(output, product) { return Array.isArray(output.all
 function isBeforeDateRange(date, range) { return Boolean(range.from && date && date < range.from); }
 function isDateInRange(date, range) { return (!range.from || Boolean(date && date >= range.from)) && (!range.to || Boolean(date && date <= range.to)); }
 
-return { getPresentationInfo,parsePresentationQuantity,getPreferredPhysicalUnit,getPhysicalUnitOptions,getOutputQuantityConversion, getPresentationBreakdown, getOutputAllocations };
+return { TOTAL_UNITS,isTotalProduct,totalPresentation,getPresentationInfo,parsePresentationQuantity,getPreferredPhysicalUnit,getPhysicalUnitOptions,getOutputQuantityConversion, getPresentationBreakdown, getOutputAllocations };
 });

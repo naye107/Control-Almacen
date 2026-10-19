@@ -1,7 +1,7 @@
 'use strict';
 const crypto=require('node:crypto');const {AppError}=require('./errors');const {digest,equal}=require('./security');
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const TEMPLATE='corporate-a4-v1';
+const TEMPLATE='corporate-a4-total-v2';
 const {verifyDocument}=require('./integrity');
 function requestSnapshot(r){return {kind:'REQUEST',code:r.code,createdAt:r.createdAt,requester:r.requester,destination:r.destination,notes:r.notes||'',category:r.category||null,crop:r.crop||null,applicationMode:r.applicationMode||null,containerCount:r.containerCount||null,items:r.items.map(i=>({product:i.productSnapshot.name,presentation:i.presentation,quantity:String(i.quantity),unit:i.unit,doseQuantity:i.doseQuantity||null}))};}
 function dispatchSnapshot(d){if(!d.result)throw new AppError(409,'HISTORICAL_DOCUMENT_UNAVAILABLE');const r=d.result;return {kind:'DISPATCH',code:r.code,requestCode:r.requestCode,createdAt:r.createdAt,actor:r.actor,recipient:r.recipient,notes:r.notes||'',requester:r.requestSnapshot.requester,destination:r.requestSnapshot.destination,crop:r.requestSnapshot.crop||null,category:r.requestSnapshot.category||null,items:r.items.map(i=>({...i}))};}

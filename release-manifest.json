@@ -1,5 +1,5 @@
 {
-  "version": "1.7.0-rc.1",
+  "version": "1.7.0-rc.2",
   "purpose": "total-units-candidate-not-deployed",
   "inventoryIncluded": false,
   "productionApproved": false,
@@ -21,8 +21,8 @@
     },
     {
       "path": "app.js",
-      "bytes": 85470,
-      "sha256": "2b8556b4fb1d249705c149ddea30609f40bbfa9a315e7a765598f7b67c64dbed"
+      "bytes": 85577,
+      "sha256": "538c0bc16c97f270f76ea3ab20b69c4358486feac235f8acdc6f773906b6d0ac"
     },
     {
       "path": "assets/fonts/NotoSans-Bold.ttf",
@@ -117,12 +117,12 @@
     {
       "path": "package-lock.json",
       "bytes": 13176,
-      "sha256": "15cf8130a744f559c701b3bb9fcc2718b1d4ca6585d7785bbb18ffbc4e703e4a"
+      "sha256": "128c7835f928127e85f9bdf2d301ddb70b2cb7960626568c58419921b651d293"
     },
     {
       "path": "package.json",
       "bytes": 460,
-      "sha256": "03a05c5a6a08aaefea8f5defcd8ab3009e775530e36d14cc0ce5884ad30af720"
+      "sha256": "9676f9d031dc109c8f519823a0dfe42dbb25b2f27840c3270b070e40feae1edd"
     },
     {
       "path": "public.css",
@@ -323,6 +323,11 @@
       "path": "docs/total-units-release.md",
       "bytes": 3191,
       "sha256": "407381a7f2706a195ab7a1e4e41abefd1f91498b5cb9ebd2dd26cada8cf241c7"
+    },
+    {
+      "path": "test/pending-notice.test.cjs",
+      "bytes": 3218,
+      "sha256": "0afe4a4451ce222ae760d6bb4d7b1da48701b872166e66ca36d0062b91dbd7fb"
     }
   ]
 }

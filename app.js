@@ -15,10 +15,14 @@ let pendingSave = false;
 let pendingOperation = null;
 let formDirty = false;
 function recoveryKey() { return 'japurima.pending.' + currentUsername; }
+function renderPendingNotice() {
+  const panel = document.querySelector('#pending-panel');
+  if (panel) panel.hidden = !pendingOperation || pendingSave;
+}
 function rememberPending(operation) {
   pendingOperation = operation;
   try { if (operation) sessionStorage.setItem(recoveryKey(), JSON.stringify(operation)); else sessionStorage.removeItem(recoveryKey()); } catch { showToast('No se pudo almacenar recuperacion: descargue la copia pendiente antes de cerrar.'); }
-  const panel = document.querySelector('#pending-panel'); if (panel) panel.hidden = !operation;
+  renderPendingNotice();
 }
 function canWriteMovements() { return ['ADMINISTRADOR','ALMACENERO'].includes(currentRole); }
 function canView(view) { return currentRole==='ADMINISTRADOR'||(currentRole==='ALMACENERO'&&['dashboard','products','purchases','outputs','stock','dispatches'].includes(view))||(currentRole==='SUPERVISOR'&&['dashboard','products','stock'].includes(view)); }
@@ -325,7 +329,7 @@ async function saveState(retry = false) {
     if (lastServerSnapshot) setState(JSON.parse(lastServerSnapshot));
     showToast(error.message === 'Failed to fetch' ? 'No se confirmo el guardado. La copia pendiente se conserva; puede reintentar sin duplicar.' : error.message);
     return false;
-  } finally { pendingSave = false; }
+  } finally { pendingSave = false; renderPendingNotice(); }
 }
 
 async function refreshStateFromServer() {

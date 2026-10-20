@@ -696,11 +696,11 @@ function formatOutputPresentation(output, product) {
   return output.presentation || product?.presentation || "-";
 }
 
-function productCell(product) {
+function productCell(product, showIngredient = true) {
   return `
     <div class="product-cell">
       <strong>${escapeHtml(product.name)}</strong>
-      <small>${escapeHtml(product.activeIngredient || product.unit)}</small>
+      ${showIngredient ? `<small>${escapeHtml(product.activeIngredient || product.unit)}</small>` : ""}
     </div>
   `;
 }
@@ -1345,7 +1345,7 @@ function renderProducts() {
 
     return `
       <tr>
-        <td>${productCell(product)}</td>
+        <td>${productCell(product, false)}</td>
         <td>${escapeHtml(product.activeIngredient || "-")}</td>
         <td>${escapeHtml(product.category)}</td>
         <td>${escapeHtml(presentationSummary(product))}</td>

@@ -1,5 +1,5 @@
 {
-  "version": "1.7.0-rc.3",
+  "version": "1.7.0-rc.4",
   "purpose": "total-units-candidate-not-deployed",
   "inventoryIncluded": false,
   "productionApproved": false,
@@ -21,8 +21,8 @@
     },
     {
       "path": "app.js",
-      "bytes": 85601,
-      "sha256": "8266fbed6c2a8d6fba35cb7bc6c2f51f0bdc554d981d14da66cc5fb9fb998c5b"
+      "bytes": 85658,
+      "sha256": "227b012aca4a930b98f02667f7b8118e33f1cab4852ff5892230f0cd8ab76ae1"
     },
     {
       "path": "assets/fonts/NotoSans-Bold.ttf",
@@ -117,12 +117,12 @@
     {
       "path": "package-lock.json",
       "bytes": 13176,
-      "sha256": "76269f4e5fcf83f63c4360364604cfe9431077c93f1d367dadddd4b19ce24546"
+      "sha256": "d02fe080126031853b54461bbdbfc843400b82ed710baaa995c8dc0385aa2fdd"
     },
     {
       "path": "package.json",
       "bytes": 460,
-      "sha256": "423a7f4719070bea38257dc41c2bab072bd2934edbb9dc9deeae6c2c31010021"
+      "sha256": "1d5211807e43a34f8e19e7997fbda716b582296b9f0855fc82eb069874d32001"
     },
     {
       "path": "public.css",

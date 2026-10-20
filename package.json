@@ -1,6 +1,6 @@
 {
   "name": "japurima-almacen",
-  "version": "1.7.0-rc.3",
+  "version": "1.7.0-rc.4",
   "private": true,
   "description": "JAPURIMA production candidate: total stock in kg, L and unidad, with three roles",
   "main": "server.js",

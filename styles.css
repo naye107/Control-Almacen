@@ -959,3 +959,18 @@ body:not([data-role="ADMINISTRADOR"]) #view-products .actions-cell,body:not([dat
 #users-table select{min-width:150px;min-height:40px;border:1px solid #ccdacc;border-radius:8px;background:#fff;padding:8px;color:#214330;font-size:13px}
 
 #metric-stock{font-size:1.1rem;line-height:1.4;overflow-wrap:anywhere}
+
+.lot-dialog { border: 1px solid #cbd9cf; border-radius: 18px; padding: 24px; max-width: min(760px, 92vw); }
+.lot-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.lot-dialog h2,.lot-dialog p { grid-column: 1 / -1; }
+#stock-value-summary { font-size: 1.05rem; font-weight: 700; }
+#view-stock .toolbar-panel { display:block; }
+#view-stock .section-heading { flex-wrap:wrap; align-items:baseline; }
+#view-stock .section-heading > small { flex-basis:100%; line-height:1.6; color:var(--muted); }
+#view-stock .toolbar { justify-content:flex-start; margin-top:16px; }
+.bulk-purchase-table { min-width:1280px; table-layout:auto; }
+.bulk-purchase-table th:nth-child(n),.bulk-purchase-table td:nth-child(n) { width:auto; }
+.bulk-purchase-table th:first-child,.bulk-purchase-table td:first-child { width:240px; min-width:240px; }
+.bulk-purchase-table input { min-width:90px; }
+.bulk-purchase-table select { min-width:80px; }
+#purchase-value-total,#output-value-total { font-size:0.9rem; font-weight:600; }

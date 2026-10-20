@@ -171,7 +171,11 @@
                 Stock minimo
                 <input id="product-min-stock" type="number" min="0" step="0.000001" value="0" required>
               </label>
-              <button class="primary-button form-action" type="submit">Guardar producto</button>
+              <label>Vencimiento del stock inicial<input id="product-opening-expiry" type="date"><small>Vacío si no aplica o aún no está registrado.</small></label>
+<label>Precio unitario del stock inicial<input id="product-opening-price" type="number" min="0" max="1000000000" step="0.000001" placeholder="Sin precio registrado"></label>
+<label>Moneda<select id="product-opening-currency"><option value="PEN">Soles (S/)</option><option value="USD">Dólares (US$)</option></select></label>
+<label id="product-opening-rate-label" hidden>Tipo de cambio (S/ por US$)<input id="product-opening-rate" type="number" min="0.000001" step="0.000001"></label>
+<button class="primary-button form-action" type="submit">Guardar producto</button>
             </form>
           </section>
 
@@ -281,7 +285,7 @@
                         <th>Producto</th>
                         <th>Unidad</th>
                         <th>Cantidad</th>
-                        <th>Lote</th>
+                        <th>Lote</th><th>Vencimiento</th><th>Precio unitario</th><th>Moneda</th><th>Tipo de cambio S/ por US$</th>
                         <th class="actions-cell">Acciones</th>
                       </tr>
                     </thead>
@@ -299,7 +303,7 @@
           <section class="panel">
             <div class="section-heading">
               <h2>Historial de compras</h2>
-              <span id="purchase-count" class="counter">0</span>
+              <span id="purchase-count" class="counter">0</span><span id="purchase-value-total"></span>
             </div>
             <div class="table-wrap">
               <table>
@@ -310,7 +314,7 @@
                     <th>Unidad</th>
                     <th>Proveedor</th>
                     <th>Documento</th>
-                    <th>Cantidad</th>
+                    <th>Cantidad</th><th>Vencimiento</th><th>Precio unitario</th><th>Importe S/</th>
                     <th class="actions-cell">Acciones</th>
                   </tr>
                 </thead>
@@ -423,7 +427,7 @@
           <section class="panel">
             <div class="section-heading">
               <h2>Historial de salidas</h2>
-              <span id="output-count" class="counter">0</span>
+              <span id="output-count" class="counter">0</span><span id="output-value-total"></span>
             </div>
             <div class="table-wrap">
               <table>
@@ -435,7 +439,7 @@
                     <th>Destino</th>
                     <th>Cantidad</th>
                     <th>Motivo</th>
-                    <th>Responsable</th>
+                    <th>Responsable</th><th>Costo promedio S/</th><th>Valor de salida S/</th>
                     <th class="actions-cell">Acciones</th>
                   </tr>
                 </thead>
@@ -448,7 +452,7 @@
         <section class="view" id="view-stock" data-title="Existencias">
           <section class="panel toolbar-panel">
             <div class="section-heading">
-              <h2>Inventario actual</h2>
+              <h2>Inventario actual</h2><div id="stock-value-summary" aria-live="polite"></div><small>Valorización en soles por promedio ponderado, según fecha de movimiento; las compras se procesan antes de las salidas del mismo día. El valor incluye existencias vigentes y vencidas. Los saldos sin precio quedan pendientes de valorizar.</small>
             </div>
             <div class="toolbar">
               <label class="toolbar-field">
@@ -461,6 +465,17 @@
                 Materia activa
                 <select id="stock-active-filter">
                   <option value="">Todas</option>
+                </select>
+              </label>
+              <label class="toolbar-field">
+                Estado del producto
+                <select id="stock-status-filter">
+                  <option value="">Todos</option>
+                  <option value="Disponible">Disponible</option>
+                  <option value="Vencido">Vencido</option><option value="Parcialmente vencido">Parcialmente vencido</option>
+                  <option value="Bajo minimo">Bajo mínimo</option>
+                  <option value="Inactivo">Inactivo</option>
+                  <option value="Negativo">Negativo</option>
                 </select>
               </label>
               <label class="toolbar-field compact-field">
@@ -494,13 +509,14 @@
                     <th>Salidas</th>
                     <th>Stock</th>
                     <th>Cantidad</th>
-                    <th>Estado</th>
+                    <th>Estado</th><th>Vigente</th><th>Vencido</th><th>Costo promedio S/</th><th>Valor total S/</th>
                   </tr>
                 </thead>
                 <tbody id="stock-table"></tbody>
               </table>
             </div>
           </section>
+<section class="panel"><h2>Lotes y vencimientos</h2><p>Se descuenta primero el lote vigente con vencimiento más próximo. Los lotes sin fecha se muestran como «Sin fecha».</p><div class="table-wrap"><table><thead><tr><th>Producto</th><th>Lote</th><th>Ingreso</th><th>Vencimiento</th><th>Saldo</th><th>Unidad</th><th>Estado</th></tr></thead><tbody id="stock-lots-table"></tbody></table></div></section>
 
           <section class="panel">
             <div class="section-heading">
@@ -549,11 +565,15 @@
   <p id="users-message" aria-live="polite"></p><div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="users-table"></tbody></table></div>
   </article></section>
 </main>
+<dialog id="purchase-details-dialog" class="lot-dialog"><form id="purchase-details-form" class="form-grid"><h2>Editar lote y precio de compra</h2><p id="purchase-details-product"></p><input id="purchase-details-id" type="hidden">
+<label>Lote<input id="purchase-details-lot" maxlength="500"></label><label>Fecha de vencimiento<input id="purchase-details-expiry" type="date"></label>
+<label>Precio unitario<input id="purchase-details-price" type="number" min="0" max="1000000000" step="0.000001" placeholder="Sin precio"></label><label>Moneda<select id="purchase-details-currency"><option value="PEN">Soles (S/)</option><option value="USD">Dólares (US$)</option></select></label>
+<label id="purchase-details-rate-label" hidden>Tipo de cambio (S/ por US$)<input id="purchase-details-rate" type="number" min="0.000001" step="0.000001"></label><p>Se recalculará la valorización a partir de la fecha de esta compra.</p><button type="submit" class="primary-button">Guardar lote y precio</button><button id="purchase-details-cancel" type="button" class="ghost-button">Cancelar</button></form></dialog>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="shared/inventory-rules.js?v=fase1" defer></script>
-    <script src="shared/request-rules.js?v=fase3" defer></script><script src="shared/dispatch-rules.js?v=fase3" defer></script><script src="shared/xlsx-writer.js?v=fase4" defer></script><script src="shared/csv-writer.js?v=fase5a" defer></script><script src="app.js?v=fase5a" defer></script><script src="dispatches.js?v=fase3" defer></script>
+    <script src="shared/dispatch-rules.js?v=fase3" defer></script><script src="shared/inventory-accounting.js?v=1.8" defer></script><script src="shared/request-rules.js?v=1.8" defer></script><script src="shared/xlsx-writer.js?v=fase4" defer></script><script src="shared/csv-writer.js?v=fase5a" defer></script><script src="app.js?v=fase5a" defer></script><script src="dispatches.js?v=fase3" defer></script>
     <script src="documents.js?v=fase4" defer></script><script src="reports.js?v=fase4" defer></script><script src="users.js?v=fase1" defer></script>
   </body>
 </html>

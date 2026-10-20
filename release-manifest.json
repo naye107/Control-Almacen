@@ -1,6 +1,6 @@
 {
-  "version": "1.7.0-rc.5",
-  "purpose": "total-units-candidate-not-deployed",
+  "version": "1.8.0-rc.1",
+  "purpose": "lots-and-weighted-valuation",
   "inventoryIncluded": false,
   "productionApproved": false,
   "files": [
@@ -21,8 +21,8 @@
     },
     {
       "path": "app.js",
-      "bytes": 85524,
-      "sha256": "2f3468588b450390580a8d6fd649d226230c0dc36efb60565ad9eae010847459"
+      "bytes": 96308,
+      "sha256": "616f1eb3a03cc0e9c9807a67b0eb8fb59bbfbb8f064a9b61fd3af182508d9be4"
     },
     {
       "path": "assets/fonts/NotoSans-Bold.ttf",
@@ -76,8 +76,8 @@
     },
     {
       "path": "index.html",
-      "bytes": 32423,
-      "sha256": "a057d1bc0ffbaa2d70a3c747cba82f563773e1ab652dc0338dbbd77ea0b9e48c"
+      "bytes": 35912,
+      "sha256": "9a73da656e5659e238463d977ae981b221a9af21b1fdedc4370653f891685e70"
     },
     {
       "path": "migrations/001_phase1.sql",
@@ -117,12 +117,12 @@
     {
       "path": "package-lock.json",
       "bytes": 13176,
-      "sha256": "04af2f7f7cb7a82fd24a4d6d397ea5e477b62d3ce422badbb15545d1c34cfda6"
+      "sha256": "bb774c625887dc1822fe167204ff608768a158db47dc9a2ed9d2350136ea633d"
     },
     {
       "path": "package.json",
       "bytes": 460,
-      "sha256": "c5443161119221e7c6ce144a3dd94c7130fd98e5b00a531b5a59150f6bcfb150"
+      "sha256": "7395e0bd371d20ba06365445a8b1f7b693d9d9fce2d37fbd1d3bcc36cadc2417"
     },
     {
       "path": "public.css",
@@ -131,8 +131,8 @@
     },
     {
       "path": "public.html",
-      "bytes": 12120,
-      "sha256": "414e3acd4f87df8a55a0ee1382991c9b25d5b0a94ab319c3bdbc3926eaef8bab"
+      "bytes": 12244,
+      "sha256": "ca867ced5075e6aea9985bdf0e12442b2c646605354f7256815334c6dd773105"
     },
     {
       "path": "public.js",
@@ -176,8 +176,8 @@
     },
     {
       "path": "server.js",
-      "bytes": 14793,
-      "sha256": "04b57c268ee2758a5b7e6bd4244d0355b834e0a8a50aa24f437e75a80caded25"
+      "bytes": 14826,
+      "sha256": "6df227c8155ef22b76eee55e3b497ccd7acb88a618a3cb538f2bc9513492b4c1"
     },
     {
       "path": "shared/csv-writer.js",
@@ -196,8 +196,8 @@
     },
     {
       "path": "shared/request-rules.js",
-      "bytes": 3591,
-      "sha256": "15527c7a5de227d7e5ad27f5feb5cccb9b1d978868cc8f988661587a936a39f2"
+      "bytes": 3675,
+      "sha256": "2d2896c733c36585b50325e4ba0a1c33e724ad483acfa9ce76c2d14a880ed5d6"
     },
     {
       "path": "shared/xlsx-writer.js",
@@ -216,8 +216,8 @@
     },
     {
       "path": "src/dispatch-service.js",
-      "bytes": 10230,
-      "sha256": "550c3c56cec8134e8f22780281368ce2a1e9c5b3f6a5227405906cc80074d41f"
+      "bytes": 10316,
+      "sha256": "68b699a54cde974ea3cd431f74ef08ec18e948c509291906c07614ff093ee881"
     },
     {
       "path": "src/document-service.js",
@@ -236,8 +236,8 @@
     },
     {
       "path": "src/inventory-service.js",
-      "bytes": 9756,
-      "sha256": "d0fa56456e6e8dc4e77a54b226408772462ac661c5f3d422c8ad2024dc8812fd"
+      "bytes": 11366,
+      "sha256": "80603b513ab905c987ab78bf99190f67e5e7be135a9359cc46ea896090e69f2d"
     },
     {
       "path": "src/operational-limits.js",
@@ -266,8 +266,8 @@
     },
     {
       "path": "src/request-service.js",
-      "bytes": 7942,
-      "sha256": "b2f27cac12a9ab60a3839be2ba194adee3c63155fa3c9b61884e90a634626ba7"
+      "bytes": 8156,
+      "sha256": "84f7152cc4fd619ddd8a2cf5201a3558b7ab9d1673afa16988992af6f0622aef"
     },
     {
       "path": "src/security.js",
@@ -281,8 +281,8 @@
     },
     {
       "path": "src/stock-service.js",
-      "bytes": 3838,
-      "sha256": "3dfc1d24e2a34cf84f6f1c67b1d51646435cc42ecdd05bc2e9949783ae4b79e2"
+      "bytes": 4130,
+      "sha256": "71757ca0b5d530dc9ffbac7c58e53694d42eeff9c6e777eb63c8cd06f39b2e44"
     },
     {
       "path": "src/store.js",
@@ -291,8 +291,8 @@
     },
     {
       "path": "styles.css",
-      "bytes": 17875,
-      "sha256": "6cf21caa4f58b599ba9f0dbf76fa2ec955f5b1ad8b89c64437014945c291283b"
+      "bytes": 18873,
+      "sha256": "0bd1fb7c91aa85767fb1abf0dd9df7d6b8e8ab02fa57ec15877d1d4d0344904e"
     },
     {
       "path": "test/candidate.test.cjs",
@@ -326,8 +326,23 @@
     },
     {
       "path": "test/pending-notice.test.cjs",
-      "bytes": 3218,
-      "sha256": "0afe4a4451ce222ae760d6bb4d7b1da48701b872166e66ca36d0062b91dbd7fb"
+      "bytes": 3280,
+      "sha256": "946e48ebdfde5933ed25e4a82a49988b5710d5753626285beeb9709677eb71b9"
+    },
+    {
+      "path": "shared/inventory-accounting.js",
+      "bytes": 4545,
+      "sha256": "6f9dd1929378ed1e1adeea7a79318637481e00f375bdbfb979ade044dfc207e5"
+    },
+    {
+      "path": "test/inventory-accounting.test.cjs",
+      "bytes": 8292,
+      "sha256": "fc29d777fca41940265d79dec21665a2f39616ec95451ad8aeb63e164a81f5a9"
+    },
+    {
+      "path": "docs/lots-and-valuation.md",
+      "bytes": 4158,
+      "sha256": "f5db09fc6f7ddff597ff9a0b6aa37a29bdb8050286daa2c2318f3fef654a81f7"
     }
   ]
 }

@@ -2,11 +2,12 @@
 const { isDeepStrictEqual } = require('node:util');
 const { AppError } = require('./errors');
 const rules = require('../shared/inventory-rules');
+const Accounting = require('../shared/inventory-accounting');
 const fail = code => { throw new AppError(422, code); };
 const EPS = 1e-6;
 const KEYS = {
- products: ['id','name','activeIngredient','category','requestCategory','presentation','unit','quantityBasis','openingStock','minStock','active','expired','createdAt'],
- purchases: ['id','productId','date','presentation','supplier','quantity','lot','doc'],
+ products: ['id','name','activeIngredient','category','requestCategory','presentation','unit','quantityBasis','openingStock','minStock','active','expired','createdAt','openingExpiryDate','openingUnitPrice','openingCurrency','openingExchangeRate','openingDate'],
+ purchases: ['id','productId','date','presentation','supplier','quantity','lot','doc','expiryDate','unitPrice','currency','exchangeRate'],
  outputs: ['id','productId','date','presentation','destination','quantity','allocations','usedQuantity','usedUnit','quantityMode','calculationMode','doseQuantity','doseUnit','doseContainerCount','doseContainerType','reason','responsible','dispatchId','dispatchItemId','dispatchCode']
 };
 function positive(value, zero = false) { if (typeof value !== 'number' || !Number.isFinite(value) || value > 1e12 || (zero ? value < 0 : value <= 0)) fail('INVALID_QUANTITY'); }
@@ -14,6 +15,14 @@ function text(value, required = false) { if ((required && (typeof value !== 'str
 function date(value) { if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10) !== value) fail('INVALID_DATE'); }
 function same(a,b) { return isDeepStrictEqual(a,b); }
 function totalQuantity(value,unit){positive(value,true);if(!/^\d+(?:\.\d{1,6})?$/.test(String(value)))fail('QUANTITY_PRECISION');if(unit==='unidad'&&!Number.isInteger(value))fail('WHOLE_UNITS_REQUIRED');}
+function valuationFields(item,opening=false){
+ const expiry=item[opening?'openingExpiryDate':'expiryDate'];if(expiry!==undefined&&expiry!==null&&expiry!=='')date(expiry);
+ if(opening&&item.openingDate)date(item.openingDate);
+ const price=item[opening?'openingUnitPrice':'unitPrice'],currency=item[opening?'openingCurrency':'currency'],rate=item[opening?'openingExchangeRate':'exchangeRate'];
+ if(currency!==undefined&&!['PEN','USD'].includes(currency))fail('INVALID_CURRENCY');
+ if(price!==undefined&&price!==null&&price!==''){if(typeof price!=='number'||!Number.isFinite(price)||price<0||price>1e9||!/^\d+(?:\.\d{1,6})?$/.test(String(price)))fail('INVALID_UNIT_PRICE');if(!currency)fail('INVALID_CURRENCY');if(currency==='USD'&&(typeof rate!=='number'||!Number.isFinite(rate)||rate<=0||rate>10000||!/^\d+(?:\.\d{1,6})?$/.test(String(rate))))fail('EXCHANGE_RATE_REQUIRED');}
+ if(rate!==undefined&&rate!==null&&(typeof rate!=='number'||!Number.isFinite(rate)||rate<=0||rate>10000))fail('INVALID_EXCHANGE_RATE');
+}
 function validateChange(previous, proposed, linkedOutputs = [], requestProducts = [], generatedOutputs = []) {
  if (!proposed || typeof proposed !== 'object' || Object.keys(proposed).some(k=>!Object.hasOwn(KEYS,k))) fail('INVALID_STATE');
  const next = structuredClone(proposed);
@@ -36,6 +45,8 @@ function validateChange(previous, proposed, linkedOutputs = [], requestProducts 
    if (before) item = next[collection][index] = { ...before, ...item };
    diff.push({collection,id:item.id,before:before||null,after:item});
    if (collection==='products') {
+    valuationFields(item,true);
+    if(before&&before.expired!==item.expired)fail('EXPIRY_IS_AUTOMATIC');
     if(!before||rules.isTotalProduct(before)||rules.isTotalProduct(item)){
      if(!rules.isTotalProduct(item)||!Object.hasOwn(rules.TOTAL_UNITS,item.unit))fail('TOTAL_UNIT_REQUIRED');
      if(before&&!rules.isTotalProduct(before))fail('RESET_REQUIRED_FOR_TOTAL_UNITS');
@@ -59,10 +70,12 @@ function validateChange(previous, proposed, linkedOutputs = [], requestProducts 
      if(item.usedUnit!==undefined&&item.usedUnit!==product.unit)fail('INCOMPATIBLE_UNIT');
     }
     date(item.date); positive(item.quantity); text(item.presentation);
-    if (collection==='purchases') { text(item.supplier,true); text(item.lot); text(item.doc); }
+    if (collection==='purchases') { valuationFields(item);text(item.supplier,true); text(item.lot); text(item.doc); }
     else {
      if ((item.dispatchId||item.dispatchItemId||item.dispatchCode||item.allocations?.some(a=>a.exactQuantity))&&!generatedOutputs.includes(item.id)) fail('DISPATCH_OUTPUT_SERVER_ONLY');
-     if (product.active===false || product.expired===true) fail('PRODUCT_NOT_AVAILABLE');
+     if (product.active===false || Accounting.isLegacyExpired(product)) fail('PRODUCT_NOT_AVAILABLE');
+     const withoutThis={...next,outputs:next.outputs.filter(o=>o.id!==item.id)};
+     if(!Accounting.canIssue(withoutThis,product,item.quantity)||!Accounting.canIssue(withoutThis,product,item.quantity,item.date))fail('INSUFFICIENT_UNEXPIRED_STOCK');
      text(item.destination,true); text(item.reason,true); text(item.responsible);
      if (item.quantityMode!==undefined && !['units','physical'].includes(item.quantityMode)) fail('INVALID_QUANTITY_MODE');
      if (item.calculationMode!==undefined && !['dose','direct'].includes(item.calculationMode)) fail('INVALID_CALCULATION_MODE');

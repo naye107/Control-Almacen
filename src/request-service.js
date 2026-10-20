@@ -3,6 +3,8 @@ const crypto=require('node:crypto');
 const {AppError}=require('./errors');
 const {digest,equal}=require('./security');
 const rules=require('../shared/request-rules');
+const Accounting=require('../shared/inventory-accounting');
+const availableProduct=(state,p)=>Accounting.ledger(state,p).status!=='Vencido';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const status=value=>({REGISTRADA:'PENDIENTE',PARCIAL:'PARCIALMENTE_DESPACHADA'}[value]||value);
 function publicRequest(r){
@@ -35,7 +37,7 @@ function legacyMatches(existing,input){
 }
 class RequestService{
  constructor(store){this.store=store;}
- async catalog(category){if(category&&!Object.hasOwn(rules.CATEGORIES,category))throw new AppError(422,'INVALID_CATEGORY');const {state}=await this.store.transact(tx=>tx.getInventory());return state.products.filter(p=>rules.eligible(p,category)).map(p=>({id:p.id,name:p.name,presentation:p.presentation,unit:p.unit,requestCategory:p.requestCategory,quantityBasis:p.quantityBasis,unitOptions:rules.unitOptions(p)}));}
+ async catalog(category){if(category&&!Object.hasOwn(rules.CATEGORIES,category))throw new AppError(422,'INVALID_CATEGORY');const {state}=await this.store.transact(tx=>tx.getInventory());return state.products.filter(p=>rules.eligible(p,category)&&availableProduct(state,p)).map(p=>({id:p.id,name:p.name,presentation:p.presentation,unit:p.unit,requestCategory:p.requestCategory,quantityBasis:p.quantityBasis,unitOptions:rules.unitOptions(p)}));}
  async register(input){
   if(!input||typeof input!=='object'||(typeof input.operationId!=='string'||!UUID.test(input.operationId))||typeof input.privateKey!=='string'||!/^[A-Za-z0-9_-]{32,128}$/.test(input.privateKey))throw new AppError(422,'PRIVATE_KEY_AND_OPERATION_REQUIRED');
   const operationId=input.operationId.toLowerCase();const code='JAP-'+digest(operationId).slice(0,20).toUpperCase();
@@ -49,7 +51,7 @@ class RequestService{
    }
    const normalized=normalizeInput(input);
    const items=normalized.items.map((item,index)=>{
-    const product=inventory.state.products.find(p=>p.id===item.productId);if(!product||!rules.eligible(product,normalized.category))throw new AppError(422,'PRODUCT_NOT_AVAILABLE_IN_CATEGORY');
+    const product=inventory.state.products.find(p=>p.id===item.productId);if(!product||(!rules.eligible(product,normalized.category)||!availableProduct(inventory.state,product)))throw new AppError(422,'PRODUCT_NOT_AVAILABLE_IN_CATEGORY');
     const calculation=rules.calculateLine({...item,category:normalized.category,containerCount:normalized.containerCount,product});
     return {id:crypto.randomUUID(),lineNumber:index+1,productId:product.id,productSnapshot:{name:product.name,unit:product.unit,presentation:product.presentation,requestCategory:product.requestCategory,quantityBasis:product.quantityBasis},presentation:product.presentation,unit:item.unit,...calculation};
    });

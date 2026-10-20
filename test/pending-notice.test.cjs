@@ -6,7 +6,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 function browser(){
  const nodes=new Map(),storage=new Map(),calls=[];
  const node=selector=>{if(!nodes.has(selector))nodes.set(selector,{hidden:true,textContent:'',value:'',classList:{add(){},remove(){}},focus(){}});return nodes.get(selector);};
- const context=vm.createContext({console,crypto,Intl,JapurimaXlsx:{},window:{location:{protocol:'https:'},clearTimeout(){},setTimeout(){}},document:{querySelector:node,querySelectorAll:()=>[]},sessionStorage:{setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},fetch:(url,options)=>new Promise((resolve,reject)=>calls.push({url,options,resolve,reject}))});
+ const context=vm.createContext({console,crypto,Intl,InventoryAccounting:require('../shared/inventory-accounting'),JapurimaXlsx:{},window:{location:{protocol:'https:'},clearTimeout(){},setTimeout(){}},document:{querySelector:node,querySelectorAll:()=>[]},sessionStorage:{setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},fetch:(url,options)=>new Promise((resolve,reject)=>calls.push({url,options,resolve,reject}))});
  const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
  vm.runInContext(source.replace(/\binit\(\);\s*$/,''),context);
  vm.runInContext("currentRole='ADMINISTRADOR'; currentUsername='test_admin'; csrfToken='test-csrf'; lastServerRevision='6'; lastServerSnapshot=JSON.stringify(state); state.products.push({id:'new-product',unit:'kg'});",context);

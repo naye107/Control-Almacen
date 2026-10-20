@@ -90,7 +90,7 @@ function createServer({store,services,production=false,publicOrigin='',trustProx
    }
    if(!['GET','HEAD'].includes(req.method))throw new AppError(405,'METHOD_NOT_ALLOWED');
    const requested=route==='/'?'public.html':decodeURIComponent(route).replace(/^\/+/, '');
-   const allowed=['index.html','app.js','styles.css','users.js','public.html','public.js','shared/inventory-rules.js','shared/request-rules.js','public.css','dispatches.js','dispatches.css','shared/dispatch-rules.js','shared/xlsx-writer.js','shared/csv-writer.js','documents.js','reports.js','reports.css'];
+   const allowed=['index.html','app.js','styles.css','users.js','public.html','public.js','shared/inventory-rules.js','shared/inventory-accounting.js','shared/request-rules.js','public.css','dispatches.js','dispatches.css','shared/dispatch-rules.js','shared/xlsx-writer.js','shared/csv-writer.js','documents.js','reports.js','reports.css'];
    const file=path.resolve(ROOT,requested);const relative=path.relative(ROOT,file).split(path.sep).join('/');
    if(relative.startsWith('../')||path.isAbsolute(relative)||(!allowed.includes(relative)&&!/^assets\/[a-zA-Z0-9 ._-]+\.(png|jpg|jpeg|webp|svg|ico)$/.test(relative)))throw new AppError(403,'FORBIDDEN');
    const data=await fs.readFile(file).catch(e=>{if(e.code==='ENOENT')throw new AppError(404,'NOT_FOUND');throw e;});

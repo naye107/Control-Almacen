@@ -1,4 +1,4 @@
-(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory(require('./inventory-rules'));else root.RequestRules=factory(root.InventoryRules);})(typeof globalThis!=='undefined'?globalThis:this,function(inventory){
+(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory(require('./inventory-rules'),require('./inventory-accounting'));else root.RequestRules=factory(root.InventoryRules,root.InventoryAccounting);})(typeof globalThis!=='undefined'?globalThis:this,function(inventory,accounting){
 'use strict';
 const CATEGORIES=Object.freeze({AGROQUIMICOS:'Agroquímicos',HERRAMIENTAS:'Herramientas',OTROS:'Otros productos'});
 const SCALE=1000000n, MAX=99999999999999999999n;
@@ -32,6 +32,6 @@ function calculateLine({category,containerCount,product,doseQuantity,quantity,un
  const total=category==='AGROQUIMICOS'?multiply(doseQuantity,containerCount):normalize(quantity);
  const converted=convert(total,unit,product);return {quantity:total,doseQuantity:category==='AGROQUIMICOS'?normalize(doseQuantity):null,...converted};
 }
-function eligible(product,category){return product.active===true&&product.expired!==true&&Object.hasOwn(CATEGORIES,product.requestCategory)&&(!category||product.requestCategory===category);}
+function eligible(product,category){return product.active===true&&!accounting.isLegacyExpired(product)&&Object.hasOwn(CATEGORIES,product.requestCategory)&&(!category||product.requestCategory===category);}
 return {CATEGORIES,normalize,multiply,convert,calculateLine,unitOptions,eligible};
 });

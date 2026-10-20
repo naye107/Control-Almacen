@@ -71,6 +71,7 @@ const elements = {
   onlyLowStock: document.querySelector("#only-low-stock"),
   stockCategoryFilter: document.querySelector("#stock-category-filter"),
   stockActiveFilter: document.querySelector("#stock-active-filter"),
+  stockStatusFilter: document.querySelector("#stock-status-filter"),
   stockDateFrom: document.querySelector("#stock-date-from"),
   stockDateTo: document.querySelector("#stock-date-to"),
   exportStockExcel: document.querySelector("#export-stock-excel"),
@@ -128,7 +129,17 @@ const formatNumber = new Intl.NumberFormat("es-PE", {
   maximumFractionDigits: 6
 });
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => InventoryAccounting.today();
+let lastStatusDay = today();
+const moneyText = q => q == null ? "Pendiente de valorizar" : "S/ " + new Intl.NumberFormat("es-PE",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(InventoryAccounting.money(q)));
+let accountingCache=new Map();
+function accounting(product, day=today()){if(!product)return {purchases:new Map(),outputs:new Map(),lots:[],usable:DispatchRules.zero,expired:DispatchRules.zero,average:null,value:null};const key=product.id+"|"+day;if(!accountingCache.has(key))accountingCache.set(key,InventoryAccounting.ledger(state,product,day));return accountingCache.get(key);}
+const unitCostText=q=>q==null?"Pendiente de valorizar":"S/ "+formatNumber.format(InventoryAccounting.number(q));
+const moneyExcel=q=>q==null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(q)),2);
+function valuationTotal(values){let total=DispatchRules.zero,pending=0;for(const v of values){if(v==null)pending++;else total=DispatchRules.add(total,v);}return (pending?"Valor con precio: ":"Valor total: ")+moneyText(total)+(pending?" · "+pending+" movimiento(s) sin precio":"");}
+function receiptCost(item){const price=InventoryAccounting.price(item);return price===null?null:DispatchRules.mul(DispatchRules.read(item.quantity),price);}
+function originalPrice(item){return item.unitPrice===undefined||item.unitPrice===null?"Sin precio":(item.currency==="USD"?"US$ ":"S/ ")+formatNumber.format(item.unitPrice);}
+function openingFields(){const raw=document.querySelector("#product-opening-price").value;const currency=document.querySelector("#product-opening-currency").value;return {openingExpiryDate:document.querySelector("#product-opening-expiry").value,openingUnitPrice:raw===""?null:Number(raw),openingCurrency:currency,openingExchangeRate:currency==="USD"&&raw!==""?Number(document.querySelector("#product-opening-rate").value):null};}
 const uid = () => {
   if (crypto.randomUUID) return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16)); bytes[6]=(bytes[6]&15)|64; bytes[8]=(bytes[8]&63)|128;
@@ -263,6 +274,7 @@ function saveOutputTemplates() {
 }
 
 function setState(nextState) {
+  accountingCache.clear();
   const normalized = normalizeState(nextState);
   state.products = normalized.products;
   state.purchases = normalized.purchases;
@@ -315,7 +327,7 @@ async function saveState(retry = false) {
     const payload = await response.json();
     if (!response.ok) {
       if (response.status === 401) showLogin('Sesion vencida. Su operacion pendiente se conserva.');
-      const messages = { TOTAL_UNIT_REQUIRED: 'Solo se permiten kg, L o unidad.', TOTAL_PRESENTATION_NOT_EDITABLE: 'La cantidad se registra en la unidad total del producto.', WHOLE_UNITS_REQUIRED: 'Para unidad, introduce cantidades enteras.', RESET_REQUIRED_FOR_TOTAL_UNITS: 'Este producto conserva el formato historico; no se convertira automaticamente.', STATE_CONFLICT: 'Otro usuario actualizo el inventario. Descargue la copia pendiente y cargue el estado actual antes de volver a registrar.', INSUFFICIENT_STOCK: 'El servidor rechazo el cambio por stock insuficiente.', HISTORICAL_UNIT_OR_PRESENTATION_IMMUTABLE: 'No se puede cambiar la unidad o presentacion de un producto con historial.' };
+      const messages = { TOTAL_UNIT_REQUIRED: 'Solo se permiten kg, L o unidad.', TOTAL_PRESENTATION_NOT_EDITABLE: 'La cantidad se registra en la unidad total del producto.', WHOLE_UNITS_REQUIRED: 'Para unidad, introduce cantidades enteras.', RESET_REQUIRED_FOR_TOTAL_UNITS: 'Este producto conserva el formato historico; no se convertira automaticamente.', STATE_CONFLICT: 'Otro usuario actualizo el inventario. Descargue la copia pendiente y cargue el estado actual antes de volver a registrar.', INSUFFICIENT_UNEXPIRED_STOCK: 'No hay suficiente stock vigente; revise los lotes vencidos.', INVALID_UNIT_PRICE: 'El precio admite hasta seis decimales y no puede ser negativo.', EXCHANGE_RATE_REQUIRED: 'Indique el tipo de cambio S/ por US$.', INVALID_DATE: 'Revise la fecha ingresada.', INSUFFICIENT_STOCK: 'El servidor rechazo el cambio por stock insuficiente.', HISTORICAL_UNIT_OR_PRESENTATION_IMMUTABLE: 'No se puede cambiar la unidad o presentacion de un producto con historial.' };
       throw new Error(messages[payload.error] || 'No se guardo: ' + payload.error);
     }
     // The acknowledged payload is durable; clear pending only after a positive response.
@@ -351,7 +363,7 @@ async function refreshStateFromServer() {
     if (!metaResponse.ok) throw new Error("No se pudo sincronizar.");
 
     const meta = await metaResponse.json().catch(() => ({}));
-    if (meta.revision && meta.revision === lastServerRevision) return;
+    if (meta.revision && meta.revision === lastServerRevision) { if(lastStatusDay!==today()){lastStatusDay=today();renderAll();} return; }
 
     const response = await fetch("/api/state", {
       cache: "no-store",
@@ -506,7 +518,8 @@ function isDateInRange(date, dateRange = {}) {
 
 function statusText(product, stats) {
   if (!product.active) return "Inactivo";
-  if (product.expired) return "Vencido";
+  if (InventoryAccounting.isLegacyExpired(product)) return "Vencido";
+  const expiryStatus=accounting(product).status; if(expiryStatus)return expiryStatus;
   if (stats.stock < 0) return "Negativo";
   if (stats.low) return "Bajo minimo";
   return "Disponible";
@@ -514,7 +527,7 @@ function statusText(product, stats) {
 
 function statusBadge(product, stats) {
   const text = statusText(product, stats);
-  const className = text === "Inactivo" ? "muted" : text === "Vencido" || text === "Negativo" ? "danger" : text === "Bajo minimo" ? "warning" : "";
+  const className = text === "Inactivo" ? "muted" : text === "Vencido" || text === "Negativo" ? "danger" : text === "Bajo minimo" || text === "Parcialmente vencido" ? "warning" : "";
   return `<span class="badge ${className}">${text}</span>`;
 }
 
@@ -845,12 +858,17 @@ function addPurchaseLine(item = {}) {
     <td>
       <input class="purchase-line-lot" autocomplete="off" placeholder="Lote">
     </td>
+    <td><input class="purchase-line-expiry" type="date" aria-label="Vencimiento del lote"></td>
+    <td><input class="purchase-line-price" type="number" min="0" step="0.000001" placeholder="Sin precio" aria-label="Precio unitario"></td>
+    <td><select class="purchase-line-currency" aria-label="Moneda"><option value="PEN">S/</option><option value="USD">US$</option></select></td>
+    <td><input class="purchase-line-rate" type="number" min="0.000001" step="0.000001" disabled placeholder="Solo US$" aria-label="Tipo de cambio S/ por US$"></td>
     <td class="actions-cell">
       <button class="icon-button danger" type="button" title="Quitar producto" data-purchase-action="remove-line">Quitar</button>
     </td>
   `;
 
   elements.purchaseLines.append(row);
+  row.querySelector(".purchase-line-currency").addEventListener("change",()=>{row.querySelector(".purchase-line-rate").disabled=row.querySelector(".purchase-line-currency").value!=="USD";});
   fillPurchaseLineProductOptions(row, item.productId);
   if (item.presentation) {
     row.querySelector(".purchase-line-presentation").value = item.presentation;
@@ -962,6 +980,10 @@ function readPurchaseLine(row) {
     presentation: row.querySelector(".purchase-line-presentation").value.trim(),
     quantityInput,
     quantity: toNumber(quantityInput),
+    expiryDate:row.querySelector(".purchase-line-expiry").value,
+    unitPrice:row.querySelector(".purchase-line-price").value===""?null:Number(row.querySelector(".purchase-line-price").value),
+    currency:row.querySelector(".purchase-line-currency").value,
+    exchangeRate:row.querySelector(".purchase-line-currency").value==="USD"&&row.querySelector(".purchase-line-price").value!==""?Number(row.querySelector(".purchase-line-rate").value):null,
     lot: row.querySelector(".purchase-line-lot").value.trim()
   };
 }
@@ -1043,7 +1065,7 @@ function updateOutputLineStock(row) {
   const doseCount = getDoseContainerCount();
   const showDoseTotal = isApplicationDoseMode() && doseQuantity > 0 && doseCount > 0;
   const stockLabel = product.quantityBasis === "TOTAL"
-    ? `${formatNumber.format(getPresentationStock(product, presentation))} ${product.unit}`
+    ? `${formatNumber.format(InventoryAccounting.number(accounting(product).usable))} ${product.unit} vigentes${accounting(product).expired.n>0n?" · "+formatNumber.format(InventoryAccounting.number(accounting(product).expired))+" vencidos":""}`
     : String(unitMode || "").startsWith("physical") && info.baseValue !== null
     ? formatPhysicalTotal(info.group, getCompatiblePhysicalStock(product, info.group), info.unit)
     : `${formatNumber.format(getPresentationStock(product, presentation))} ${product.unit}${info.baseValue === null ? "" : ` (${formatPhysicalTotal(info.group, info.baseValue * getPresentationStock(product, presentation), info.unit)})`}`;
@@ -1339,8 +1361,7 @@ function renderProducts() {
     const stats = getProductStats(product);
     const toggleLabel = product.active === false ? "Activar" : "Desactivar";
     const toggleTitle = product.active === false ? "Activar producto" : "Desactivar producto";
-    const expiredLabel = product.expired ? "Vigente" : "Vencido";
-    const expiredTitle = product.expired ? "Marcar producto como vigente" : "Marcar producto como vencido";
+
 
     return `
       <tr>
@@ -1356,7 +1377,6 @@ function renderProducts() {
           <div class="row-actions">
             <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button" type="button" title="Editar producto" data-action="edit-product" data-id="${product.id}">Editar</button>
             <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button" type="button" title="${toggleTitle}" data-action="toggle-product" data-id="${product.id}">${toggleLabel}</button>
-            <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button warning" type="button" title="${expiredTitle}" data-action="toggle-expired" data-id="${product.id}">${expiredLabel}</button>
             <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar producto" data-action="delete-product" data-id="${product.id}">Eliminar</button>
           </div>
         </td>
@@ -1375,9 +1395,11 @@ function getFilteredPurchases() {
 }
 
 function renderPurchases() {
+  accountingCache.clear();
   const filtered = getFilteredPurchases();
 
   elements.purchaseCount.textContent = filtered.length;
+  document.querySelector("#purchase-value-total").textContent=valuationTotal(filtered.map(p=>receiptCost(p)));
   elements.purchasesTable.innerHTML = filtered
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((purchase) => {
@@ -1390,13 +1412,14 @@ function renderPurchases() {
           <td>${escapeHtml(presentation)}</td>
           <td>${escapeHtml(purchase.supplier)}</td>
           <td>${escapeHtml(purchase.doc || "-")}</td>
-          <td>${formatNumber.format(purchase.quantity)}</td>
+          <td>${formatNumber.format(purchase.quantity)}</td><td>${escapeHtml(purchase.expiryDate||"Sin fecha")}</td><td>${escapeHtml(originalPrice(purchase))}</td><td>${escapeHtml(moneyText(receiptCost(purchase)))}</td>
           <td class="actions-cell">
+            <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button" type="button" data-action="edit-purchase-details" data-id="${purchase.id}">Editar lote y precio</button>
             <button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar compra" data-action="delete-purchase" data-id="${purchase.id}">Eliminar</button>
           </td>
         </tr>
       `;
-    }).join("") || emptyRow(7, "No hay compras registradas.");
+    }).join("") || emptyRow(10, "No hay compras registradas.");
 }
 
 function getFilteredOutputs() {
@@ -1407,9 +1430,11 @@ function getFilteredOutputs() {
 }
 
 function renderOutputs() {
+  accountingCache.clear();
   const filtered = getFilteredOutputs();
 
   elements.outputCount.textContent = filtered.length;
+  document.querySelector("#output-value-total").textContent=valuationTotal(filtered.map(o=>accounting(getProduct(o.productId)).outputs.get(o.id)?.total));
   elements.outputsTable.innerHTML = filtered
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((output) => {
@@ -1423,13 +1448,13 @@ function renderOutputs() {
           <td>${escapeHtml(output.destination)}</td>
           <td>${escapeHtml(formatOutputQuantity(output, product))}</td>
           <td>${escapeHtml(output.reason)}</td>
-          <td>${escapeHtml(output.responsible || "-")}</td>
+          <td>${escapeHtml(output.responsible || "-")}</td><td>${escapeHtml(unitCostText(accounting(product).outputs.get(output.id)?.unitPrice))}</td><td>${escapeHtml(moneyText(accounting(product).outputs.get(output.id)?.total))}</td>
           <td class="actions-cell">
             ${output.dispatchId ? '<span class="badge">Despacho confirmado</span>' : `<button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar salida" data-action="delete-output" data-id="${output.id}">Eliminar</button>`}
           </td>
         </tr>
       `;
-    }).join("") || emptyRow(8, "No hay salidas registradas.");
+    }).join("") || emptyRow(10, "No hay salidas registradas.");
 }
 
 function categoryPriority(category) {
@@ -1442,12 +1467,14 @@ function getStockFilterContext() {
   const onlyLow = elements.onlyLowStock.checked;
   const selectedCategory = normalize(elements.stockCategoryFilter.value);
   const selectedActive = normalize(elements.stockActiveFilter.value);
+  const selectedStatus = elements.stockStatusFilter.value;
   const dateRange = getStockDateRange();
   const matchesStockFilters = (product) => {
-    if (!product) return !selectedCategory && !selectedActive;
+    if (!product) return !selectedCategory && !selectedActive && !selectedStatus;
     const matchesCategory = !selectedCategory || normalize(product.category) === selectedCategory;
     const matchesActive = !selectedActive || normalize(product.activeIngredient) === selectedActive;
-    return matchesCategory && matchesActive;
+    const matchesStatus = !selectedStatus || statusText(product, getProductStats(product, { dateRange })) === selectedStatus;
+    return matchesCategory && matchesActive && matchesStatus;
   };
 
   const rows = state.products
@@ -1488,9 +1515,13 @@ function getStockFilterContext() {
 }
 
 function renderStock() {
+  accountingCache.clear();
   const { rows, dateRange, matchesStockFilters } = getStockFilterContext();
   let currentCategory = "";
   const stockRows = [];
+  let pricedTotal=DispatchRules.zero,unpriced=0;
+  for(const {product} of rows){const a=accounting(product,dateRange.to||today());if(a.value===null)unpriced++;else pricedTotal=DispatchRules.add(pricedTotal,a.value);}
+  document.querySelector("#stock-value-summary").textContent=`Valor ${unpriced?"con precio registrado":"total"}: ${moneyText(pricedTotal)}${unpriced?" · "+unpriced+" producto(s) pendientes de valorizar":""}`;
 
   rows.forEach(({ product, stats }) => {
     const category = String(product.category || "Sin categoria").trim() || "Sin categoria";
@@ -1500,7 +1531,7 @@ function renderStock() {
       currentCategory = categoryKey;
       stockRows.push(`
         <tr class="category-group-row">
-          <td colspan="10">${escapeHtml(category)}</td>
+          <td colspan="14">${escapeHtml(category)}</td>
         </tr>
       `);
     }
@@ -1517,12 +1548,14 @@ function renderStock() {
         <td><strong>${formatNumber.format(stats.stock)}</strong></td>
         <td>${escapeHtml(formatTotalQuantity(product, { dateRange }))}</td>
         <td>${statusBadge(product, stats)}</td>
+        <td>${formatNumber.format(InventoryAccounting.number(accounting(product).usable))}</td><td>${formatNumber.format(InventoryAccounting.number(accounting(product).expired))}</td><td>${escapeHtml(unitCostText(accounting(product,dateRange.to||today()).average))}</td><td>${escapeHtml(moneyText(accounting(product,dateRange.to||today()).value))}</td>
       </tr>
     `);
   });
 
-  elements.stockTable.innerHTML = stockRows.join("") || emptyRow(10, "No hay existencias para mostrar.");
+  elements.stockTable.innerHTML = stockRows.join("") || emptyRow(14, "No hay existencias para mostrar.");
 
+  document.querySelector("#stock-lots-table").innerHTML=rows.flatMap(({product})=>accounting(product).lots.map(l=>`<tr><td>${escapeHtml(product.name)}</td><td>${escapeHtml(l.lot||"Sin lote")}</td><td>${escapeHtml(l.date||"Stock inicial")}</td><td>${escapeHtml(l.expiry||"Sin fecha")}</td><td>${formatNumber.format(InventoryAccounting.number(l.remaining))}</td><td>${escapeHtml(product.unit)}</td><td>${l.expiry?(InventoryAccounting.expired(l.expiry)?"Vencido":"Vigente"):"Sin fecha"}</td></tr>`)).join("")||emptyRow(7,"No hay lotes con saldo.");
   const movements = getMovements().filter((movement) => {
     const product = getProduct(movement.productId);
     return matchesStockFilters(product)
@@ -1547,6 +1580,7 @@ function renderStock() {
 }
 
 function renderAll() {
+  accountingCache.clear();
   renderCategoryOptions();
   renderStockFilterOptions();
   renderOutputTemplateOptions();
@@ -1562,6 +1596,7 @@ function renderAll() {
 
 function resetProductForm() {
   productForm.reset();
+  document.querySelector("#product-opening-rate-label").hidden=true;
   document.querySelector("#product-request-category").value = "AGROQUIMICOS";
   document.querySelector("#product-id").value = "";
   document.querySelector("#product-active-ingredient").value = "";
@@ -1575,6 +1610,7 @@ async function handleProductSubmit(event) {
 
   const id = document.querySelector("#product-id").value;
   const data = {
+    ...openingFields(),
     name: document.querySelector("#product-name").value.trim(),
     activeIngredient: document.querySelector("#product-active-ingredient").value.trim(),
     category: document.querySelector("#product-category").value,
@@ -1591,6 +1627,7 @@ async function handleProductSubmit(event) {
     return;
   }
 
+  if(data.openingUnitPrice!==null&&data.openingCurrency==="USD"&&!(data.openingExchangeRate>0)){showToast("Indique el tipo de cambio de la compra en dólares.");return;}
   if (id) {
     const product = getProduct(id);
     const currentStats = getProductStats(product);
@@ -1608,7 +1645,8 @@ async function handleProductSubmit(event) {
       ...data,
       active: true,
       expired: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      openingDate: today()
     });
 
   }
@@ -1667,6 +1705,7 @@ async function handlePurchaseSubmit(event) {
       return;
     }
 
+    if(line.unitPrice!==null&&line.currency==="USD"&&!(line.exchangeRate>0)){showToast("Indique el tipo de cambio para el precio en dólares.");return;}
     purchases.push({
       id: uid(),
       productId: line.product.id,
@@ -1675,6 +1714,7 @@ async function handlePurchaseSubmit(event) {
       supplier,
       quantity: line.quantity,
       lot: line.lot,
+      expiryDate:line.expiryDate,unitPrice:line.unitPrice,currency:line.currency,exchangeRate:line.exchangeRate,
       doc
     });
   }
@@ -1748,6 +1788,7 @@ async function handleOutputSubmit(event) {
       return;
     }
 
+    if(!InventoryAccounting.canIssue({...state,outputs:[...state.outputs,...plannedOutputs]},line.product,effectiveQuantity)){showToast("La salida supera el stock vigente. Revise los lotes vencidos en Existencias.");return;}
     const conversion = getOutputQuantityConversion(line.product, line.presentation, effectiveQuantity, line.unitMode);
     if (!conversion) {
       showToast(`No se pudo validar la unidad de ${line.product.name}.`);
@@ -1814,6 +1855,11 @@ function editProduct(productId) {
   const product = getProduct(productId);
   if (!product) return;
 
+  document.querySelector("#product-opening-expiry").value=product.openingExpiryDate||"";
+  document.querySelector("#product-opening-price").value=product.openingUnitPrice??"";
+  document.querySelector("#product-opening-currency").value=product.openingCurrency||"PEN";
+  document.querySelector("#product-opening-rate").value=product.openingExchangeRate??"";
+  document.querySelector("#product-opening-rate-label").hidden=product.openingCurrency!=="USD";
   document.querySelector("#product-id").value = product.id;
   document.querySelector("#product-name").value = product.name;
   document.querySelector("#product-active-ingredient").value = product.activeIngredient || "";
@@ -1836,15 +1882,6 @@ async function toggleProduct(productId) {
   showToast(product.active ? "Producto activado." : "Producto desactivado.");
 }
 
-async function toggleExpiredProduct(productId) {
-  const product = getProduct(productId);
-  if (!product) return;
-
-  product.expired = !product.expired;
-  if (!(await saveState())) return;
-  renderAll();
-  showToast(product.expired ? "Producto marcado como vencido." : "Producto marcado como vigente.");
-}
 
 async function deleteProduct(productId) {
   const product = getProduct(productId);
@@ -1988,7 +2025,7 @@ function exportStockExcel() {
     [xlsxText("Reporte de existencias", 2)],
     [xlsxText("Desde", 2), dateRange.from || "Inicio", xlsxText("Hasta", 2), dateRange.to || "Actual"],
     [],
-    ["Nombre comercial", "Materia activa", "Categoria", "Unidad", "Inicial", "Compras", "Salidas", "Stock", "Cantidad", "Minimo", "Estado"].map((value) => xlsxText(value, 2))
+    ["Nombre comercial", "Materia activa", "Categoria", "Unidad", "Inicial", "Compras", "Salidas", "Stock", "Cantidad", "Minimo", "Estado", "Vigente", "Vencido", "Costo promedio S/", "Valor total S/"].map((value) => xlsxText(value, 2))
   ];
 
   rows.forEach(({ product, stats }) => {
@@ -2003,7 +2040,10 @@ function exportStockExcel() {
       xlsxNumber(stats.stock),
       formatTotalQuantity(product, { dateRange }),
       xlsxNumber(product.minStock),
-      statusText(product, stats)
+      statusText(product, stats),
+      xlsxNumber(InventoryAccounting.number(accounting(product).usable),6),xlsxNumber(InventoryAccounting.number(accounting(product).expired),6),
+      accounting(product,dateRange.to||today()).average===null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(accounting(product,dateRange.to||today()).average)),2),
+      accounting(product,dateRange.to||today()).value===null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(accounting(product,dateRange.to||today()).value)),2)
     ]);
   });
 
@@ -2028,7 +2068,7 @@ function exportPurchasesExcel() {
     [xlsxText("Reporte de compras", 2)],
     [xlsxText("Generado", 2), today()],
     [],
-    ["Fecha", "Producto", "Unidad", "Proveedor", "Documento", "Cantidad", "Lote"].map((value) => xlsxText(value, 2))
+    ["Fecha", "Producto", "Unidad", "Proveedor", "Documento", "Cantidad", "Lote", "Vencimiento", "Precio unitario", "Moneda", "Tipo de cambio S/ por US$", "Importe S/"].map((value) => xlsxText(value, 2))
   ];
 
   purchases.forEach((purchase) => {
@@ -2040,7 +2080,8 @@ function exportPurchasesExcel() {
       purchase.supplier || "",
       purchase.doc || "",
       xlsxNumber(purchase.quantity),
-      purchase.lot || ""
+      purchase.lot || "",purchase.expiryDate||"Sin fecha",purchase.unitPrice==null?"Sin precio":xlsxNumber(purchase.unitPrice,6),purchase.currency||"",purchase.exchangeRate?xlsxNumber(purchase.exchangeRate,6):"",
+      receiptCost(purchase)==null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(receiptCost(purchase))),2)
     ]);
   });
 
@@ -2065,7 +2106,7 @@ function exportOutputsExcel() {
     [xlsxText("Reporte de salidas", 2)],
     [xlsxText("Generado", 2), today()],
     [],
-    ["Fecha", "Producto", "Unidad", "Destino", "Cantidad", "Motivo", "Responsable"].map((value) => xlsxText(value, 2))
+    ["Fecha", "Producto", "Unidad", "Destino", "Cantidad", "Motivo", "Responsable", "Costo promedio S/", "Valor de salida S/"].map((value) => xlsxText(value, 2))
   ];
 
   outputs.forEach((output) => {
@@ -2077,7 +2118,9 @@ function exportOutputsExcel() {
       output.destination || "",
       formatOutputQuantity(output, product),
       output.reason || "",
-      output.responsible || ""
+      output.responsible || "",
+      accounting(product).outputs.get(output.id)?.unitPrice==null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(accounting(product).outputs.get(output.id).unitPrice)),2),
+      accounting(product).outputs.get(output.id)?.total==null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(accounting(product).outputs.get(output.id).total)),2)
     ]);
   });
 
@@ -2091,6 +2134,16 @@ function exportOutputsExcel() {
   showToast("Salidas exportadas a Excel.");
 }
 
+let lotDialogWasDirty=false;
+function editPurchaseDetails(id){if(currentRole!=='ADMINISTRADOR')return;const purchase=state.purchases.find(p=>p.id===id);if(!purchase)return;lotDialogWasDirty=formDirty;formDirty=true;
+ document.querySelector('#purchase-details-id').value=id;document.querySelector('#purchase-details-product').textContent=getProduct(purchase.productId)?.name||'Producto';
+ for(const [field,key] of [['lot','lot'],['expiry','expiryDate'],['price','unitPrice'],['currency','currency'],['rate','exchangeRate']])document.querySelector('#purchase-details-'+field).value=purchase[key]??(key==='currency'?'PEN':'');
+ document.querySelector('#purchase-details-rate-label').hidden=purchase.currency!=='USD';document.querySelector('#purchase-details-dialog').showModal();}
+async function savePurchaseDetails(event){event.preventDefault();if(currentRole!=='ADMINISTRADOR'||pendingSave||pendingOperation)return;const p=state.purchases.find(p=>p.id===document.querySelector('#purchase-details-id').value);if(!p)return;
+ const raw=document.querySelector('#purchase-details-price').value,currency=document.querySelector('#purchase-details-currency').value,rate=document.querySelector('#purchase-details-rate').value;if(currency==='USD'&&raw!==''&&!(Number(rate)>0)){showToast('Indique el tipo de cambio S/ por US$.');return;}
+ Object.assign(p,{lot:document.querySelector('#purchase-details-lot').value.trim(),expiryDate:document.querySelector('#purchase-details-expiry').value,unitPrice:raw===''?null:Number(raw),currency,exchangeRate:currency==='USD'&&raw!==''?Number(rate):null});
+ if(await saveState()){document.querySelector('#purchase-details-dialog').close();renderAll();}}
+
 function handleTableAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -2098,8 +2151,9 @@ function handleTableAction(event) {
   const { action, id } = button.dataset;
   if (action === "edit-product") editProduct(id);
   if (action === "toggle-product") toggleProduct(id);
-  if (action === "toggle-expired") toggleExpiredProduct(id);
+
   if (action === "delete-product") deleteProduct(id);
+  if (action === "edit-purchase-details") editPurchaseDetails(id);
   if (action === "delete-purchase") deletePurchase(id);
   if (action === "delete-output") deleteOutput(id);
 }
@@ -2107,6 +2161,10 @@ function handleTableAction(event) {
 function bindEvents() {
   if (appEventsBound) return;
   appEventsBound = true;
+  document.querySelector('#purchase-details-form').addEventListener('submit',savePurchaseDetails);
+  document.querySelector('#purchase-details-currency').addEventListener('change',()=>{document.querySelector('#purchase-details-rate-label').hidden=document.querySelector('#purchase-details-currency').value!=='USD';});
+  document.querySelector('#purchase-details-cancel').addEventListener('click',()=>{document.querySelector('#purchase-details-dialog').close();formDirty=lotDialogWasDirty;});
+  document.querySelector('#purchase-details-dialog').addEventListener('cancel',()=>{formDirty=lotDialogWasDirty;});
   [productForm,purchaseForm,outputForm].forEach(form => form.addEventListener('input', () => { formDirty = true; }));
   document.addEventListener('submit', event => {
     if (event.target.matches('#product-form,#purchase-form,#output-form') && ((event.target.id==='product-form'?currentRole!=='ADMINISTRADOR':!canWriteMovements()) || pendingSave || pendingOperation || isSyncing)) {
@@ -2145,6 +2203,8 @@ function bindEvents() {
   elements.onlyLowStock.addEventListener("change", renderStock);
   elements.stockCategoryFilter.addEventListener("change", renderStock);
   elements.stockActiveFilter.addEventListener("change", renderStock);
+  elements.stockStatusFilter.addEventListener("change", renderStock);
+  document.querySelector("#product-opening-currency").addEventListener("change",()=>{document.querySelector("#product-opening-rate-label").hidden=document.querySelector("#product-opening-currency").value!=="USD";});
   elements.stockDateFrom.addEventListener("change", renderStock);
   elements.stockDateTo.addEventListener("change", renderStock);
   elements.showQuickProduct.addEventListener("click", showQuickProductForm);

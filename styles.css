@@ -931,6 +931,18 @@ body[data-role="ALMACENERO"] button[data-action] { display: none !important; }
 #pending-panel button { margin: 6px 4px 6px 0; }
 #users-table td { vertical-align: top; }
 #users-table input { max-width: 220px; }
+#view-users #user-create-form { grid-template-columns:repeat(3,minmax(0,1fr));align-items:end; }
+#view-users #user-create-form > button { grid-column:1/-1;justify-self:start;min-width:180px; }
+#view-users .role-help { max-width:none;margin:20px 0;padding:16px 20px; }
+.users-toolbar { display:flex;align-items:center;justify-content:space-between;gap:16px;margin:24px 0 12px; }
+.users-toolbar h3 { margin:0; }
+#view-users table { table-layout:auto;min-width:760px; }
+#users-table td:not(.user-actions) { white-space:nowrap;padding-top:24px; }
+#users-table .user-actions { min-width:420px; }
+.user-action-group { display:flex;align-items:center;gap:10px;margin-top:10px; }
+#users-table .user-action-group select,#users-table .user-action-group input { width:220px;max-width:100%;flex:0 1 220px; }
+#users-table button { min-height:42px;white-space:nowrap; }
+@media(max-width:700px) { #view-users #user-create-form { grid-template-columns:1fr; }.users-toolbar{flex-wrap:wrap;} }
 @media (max-width: 700px) { .public-content { padding: 16px; } }
 
 .demo-notice{position:relative;z-index:1000;background:#fff3cd;color:#513f00;padding:12px 18px;text-align:center;font:500 14px/1.5 system-ui,sans-serif;border-bottom:2px solid #e0bc50}.demo-notice strong{display:inline-block;margin-right:6px}
@@ -974,3 +986,8 @@ body:not([data-role="ADMINISTRADOR"]) #view-products .actions-cell,body:not([dat
 .bulk-purchase-table input { min-width:90px; }
 .bulk-purchase-table select { min-width:80px; }
 #purchase-value-total,#output-value-total { font-size:0.9rem; font-weight:600; }
+#dispatch-cancel-form { grid-template-columns:minmax(0,1fr);gap:16px; }
+#dispatch-cancel-form > div { display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap; }
+#dispatch-cancel-form button { width:auto; }
+#dispatch-cancel-form textarea { width:100%;min-height:96px; }
+#users-table .user-action-group button { border:1px solid var(--border,#dbe7dd);border-radius:9px;padding:8px 14px; }

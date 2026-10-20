@@ -450,7 +450,7 @@ function getProductStats(product, options = {}) {
 function getMovements() {
   const purchases = state.purchases.map((purchase) => ({
     id: purchase.id,
-    type: "Compra",
+    type: purchase.returnOfOutput ? "Devolución" : "Compra",
     date: purchase.date,
     productId: purchase.productId,
     entry: toNumber(purchase.quantity),
@@ -1390,7 +1390,7 @@ function getFilteredPurchases() {
   return state.purchases.filter((purchase) => {
     const product = getProduct(purchase.productId);
     const matchesSupplier = !supplierQuery || normalize(purchase.supplier).includes(supplierQuery);
-    return matchesSupplier && matchesSearch([product?.name, purchase.presentation, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
+    return !purchase.returnOfOutput && matchesSupplier && matchesSearch([product?.name, purchase.presentation, product?.presentation, purchase.supplier, purchase.lot, purchase.doc, purchase.date]);
   });
 }
 
@@ -1429,12 +1429,13 @@ function getFilteredOutputs() {
   });
 }
 
+function cancelledOutput(output){return state.purchases.some(p=>p.returnOfOutput===output.id);}
 function renderOutputs() {
   accountingCache.clear();
   const filtered = getFilteredOutputs();
 
   elements.outputCount.textContent = filtered.length;
-  document.querySelector("#output-value-total").textContent=valuationTotal(filtered.map(o=>accounting(getProduct(o.productId)).outputs.get(o.id)?.total));
+  document.querySelector("#output-value-total").textContent=valuationTotal(filtered.filter(o=>!cancelledOutput(o)).map(o=>accounting(getProduct(o.productId)).outputs.get(o.id)?.total));
   elements.outputsTable.innerHTML = filtered
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((output) => {
@@ -1450,7 +1451,7 @@ function renderOutputs() {
           <td>${escapeHtml(output.reason)}</td>
           <td>${escapeHtml(output.responsible || "-")}</td><td>${escapeHtml(unitCostText(accounting(product).outputs.get(output.id)?.unitPrice))}</td><td>${escapeHtml(moneyText(accounting(product).outputs.get(output.id)?.total))}</td>
           <td class="actions-cell">
-            ${output.dispatchId ? '<span class="badge">Despacho confirmado</span>' : `<button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar salida" data-action="delete-output" data-id="${output.id}">Eliminar</button>`}
+            ${output.dispatchId ? `<span class="badge">${cancelledOutput(output)?'Anulado · stock devuelto':'Despacho confirmado'}</span>` : `<button ${currentRole!=='ADMINISTRADOR'?'hidden':''} class="icon-button danger" type="button" title="Eliminar salida" data-action="delete-output" data-id="${output.id}">Eliminar</button>`}
           </td>
         </tr>
       `;
@@ -2106,7 +2107,7 @@ function exportOutputsExcel() {
     [xlsxText("Reporte de salidas", 2)],
     [xlsxText("Generado", 2), today()],
     [],
-    ["Fecha", "Producto", "Unidad", "Destino", "Cantidad", "Motivo", "Responsable", "Costo promedio S/", "Valor de salida S/"].map((value) => xlsxText(value, 2))
+    ["Fecha", "Producto", "Unidad", "Destino", "Cantidad", "Motivo", "Responsable", "Costo promedio S/", "Valor de salida S/", "Estado"].map((value) => xlsxText(value, 2))
   ];
 
   outputs.forEach((output) => {
@@ -2120,7 +2121,8 @@ function exportOutputsExcel() {
       output.reason || "",
       output.responsible || "",
       accounting(product).outputs.get(output.id)?.unitPrice==null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(accounting(product).outputs.get(output.id).unitPrice)),2),
-      accounting(product).outputs.get(output.id)?.total==null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(accounting(product).outputs.get(output.id).total)),2)
+      accounting(product).outputs.get(output.id)?.total==null?"Pendiente de valorizar":xlsxNumber(Number(InventoryAccounting.money(accounting(product).outputs.get(output.id).total)),2),
+      cancelledOutput(output)?"Anulado · stock devuelto":"Registrado"
     ]);
   });
 

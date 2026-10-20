@@ -23,7 +23,7 @@ function valuationFields(item,opening=false){
  if(price!==undefined&&price!==null&&price!==''){if(typeof price!=='number'||!Number.isFinite(price)||price<0||price>1e9||!/^\d+(?:\.\d{1,6})?$/.test(String(price)))fail('INVALID_UNIT_PRICE');if(!currency)fail('INVALID_CURRENCY');if(currency==='USD'&&(typeof rate!=='number'||!Number.isFinite(rate)||rate<=0||rate>10000||!/^\d+(?:\.\d{1,6})?$/.test(String(rate))))fail('EXCHANGE_RATE_REQUIRED');}
  if(rate!==undefined&&rate!==null&&(typeof rate!=='number'||!Number.isFinite(rate)||rate<=0||rate>10000))fail('INVALID_EXCHANGE_RATE');
 }
-function validateChange(previous, proposed, linkedOutputs = [], requestProducts = [], generatedOutputs = []) {
+function validateChange(previous, proposed, linkedOutputs = [], requestProducts = [], generatedOutputs = [], generatedReturns = []) {
  if (!proposed || typeof proposed !== 'object' || Object.keys(proposed).some(k=>!Object.hasOwn(KEYS,k))) fail('INVALID_STATE');
  const next = structuredClone(proposed);
  const diff = [];
@@ -36,11 +36,15 @@ function validateChange(previous, proposed, linkedOutputs = [], requestProducts 
    if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.id !== 'string' || !item.id || item.id.length>128 || seen.has(item.id)) fail('DUPLICATE_OR_INVALID_ID');
    seen.add(item.id);
    const before = old.get(item.id);
+   if(collection==='purchases'&&(before?.returnOfOutput||item.returnOfOutput)){
+    if(before&&!same(before,item))fail('DISPATCH_RETURN_IMMUTABLE');
+    if(!before&&!generatedReturns.includes(item.id))fail('DISPATCH_RETURN_SERVER_ONLY');
+   }
    // Accept legacy label normalization from old browsers, but preserve the original stored unit.
    if (collection==='products' && before?.unit==='bidones' && item.unit==='galones') { item.unit='bidones'; }
    if (same(before,item)) continue;
    if (before && linkedOutputs.includes(item.id) && collection==='outputs') fail('DISPATCH_OUTPUT_IMMUTABLE');
-   for (const key of Object.keys(item)) if (!allowed.includes(key) && !same(before?.[key],item[key])) fail('UNKNOWN_FIELD');
+   for (const key of Object.keys(item)) if (!allowed.includes(key) && !same(before?.[key],item[key]) && !(collection==='purchases'&&generatedReturns.includes(item.id)&&['returnOfOutput','returnOfDispatch','returnLotId','returnCost','returnSequence'].includes(key))) fail('UNKNOWN_FIELD');
    // Preserve legacy extension fields omitted by a browser.
    if (before) item = next[collection][index] = { ...before, ...item };
    diff.push({collection,id:item.id,before:before||null,after:item});
@@ -103,6 +107,7 @@ function validateChange(previous, proposed, linkedOutputs = [], requestProducts 
    }
   }
   for(const before of old.values()) if(!seen.has(before.id)) {
+   if(collection==='purchases'&&before.returnOfOutput)fail('DISPATCH_RETURN_IMMUTABLE');
    if(collection==='outputs' && linkedOutputs.includes(before.id)) fail('DISPATCH_OUTPUT_IMMUTABLE');
    diff.push({collection,id:before.id,before,after:null});
    if(collection==='products' && requestProducts.includes(before.id)) fail('PRODUCT_HAS_REQUESTS');

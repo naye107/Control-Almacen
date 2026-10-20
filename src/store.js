@@ -68,7 +68,9 @@ class FileTransaction {
  async getRequest(id) { return this.doc.requests.find(r=>r.id===id)||null; }
  async delivered(id) { const rows=this.doc.dispatches||[];const map=new Map();for(const d of rows.filter(d=>d.requestId===id&&d.status==='CONFIRMADO'))for(const i of d.items)map.set(i.requestItemId,require('../shared/dispatch-rules').add(map.get(i.requestItemId)||require('../shared/dispatch-rules').zero,require('../shared/dispatch-rules').read(i.quantity)));return map; }
  async findDispatch(operationId) { return (this.doc.dispatches||[]).find(d=>d.operationId===operationId)||null; }
- async requestDispatches(id) { return (this.doc.dispatches||[]).filter(d=>d.requestId===id&&d.status==='CONFIRMADO').map(d=>d.result); }
+ async requestDispatches(id) { return (this.doc.dispatches||[]).filter(d=>d.requestId===id).map(d=>({...d.result,status:d.status})); }
+ async dispatchCancellation(id){return (this.doc.cancellations||[]).find(c=>c.dispatchId===id)||null;}
+ async putCancellation(c){this.doc.cancellations||=[];this.doc.cancellations.push(c);const d=await this.dispatchById(c.dispatchId);d.status='ANULADO';this.dirty=true;}
  async dispatchById(id) { return (this.doc.dispatches||[]).find(d=>d.id===id)||null; }
  async putDispatch(d) { this.doc.dispatches||=[];this.doc.dispatches.push(d);for(const i of d.items)this.doc.links.push({dispatchItemId:i.id,outputId:i.outputId});this.dirty=true; }
  async updateRequestDispatch(id,status,revision) { const r=await this.getRequest(id);r.status=status;r.dispatchRevision=revision;this.dirty=true; }
@@ -90,8 +92,8 @@ class PostgresStore {
  async init() {
   // Read-only preflight. Schema changes are performed only by the explicit migration command.
   await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:5000});
-  const result=await this.pool.query({query_timeout:5000,text:"SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql','005_production_hardening.sql','006_integrity_hardening.sql','007_user_roles.sql')"});
-  if(result.rowCount!==7) throw new Error('MIGRATIONS_REQUIRED');
+  const result=await this.pool.query({query_timeout:5000,text:"SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql','005_production_hardening.sql','006_integrity_hardening.sql','007_user_roles.sql','008_dispatch_cancellations.sql')"});
+  if(result.rowCount!==8) throw new Error('MIGRATIONS_REQUIRED');
  }
  async health(){const r=await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:3000});if(r.rowCount!==1)throw new Error('INVENTORY_MISSING');return {storage:'postgresql'};}
  async transact(work,options={}) {
@@ -134,8 +136,10 @@ class PostgresTransaction {
  async getRequest(id,lock=false) { const row=(await this.client.query('SELECT code FROM requests WHERE id=$1'+(lock?' FOR UPDATE':''),[id])).rows[0];return row?this.findRequest(row.code):null; }
  async delivered(id) { const Q=require('../shared/dispatch-rules');const rows=(await this.client.query("SELECT i.request_item_id,sum(i.quantity)::text AS total FROM dispatch_items i JOIN dispatches d ON d.id=i.dispatch_id WHERE d.request_id=$1 AND d.status='CONFIRMADO' GROUP BY i.request_item_id",[id])).rows;return new Map(rows.map(r=>[r.request_item_id,Q.read(r.total)])); }
  async findDispatch(operationId) { const row=(await this.client.query('SELECT * FROM dispatches WHERE idempotency_key=$1',[operationId])).rows[0];return row?{id:row.id,userId:row.user_id,payloadHash:row.payload_hash,result:row.result_snapshot}:null; }
- async requestDispatches(id) { return (await this.client.query("SELECT result_snapshot FROM dispatches WHERE request_id=$1 AND status='CONFIRMADO' ORDER BY confirmed_at,id",[id])).rows.map(r=>r.result_snapshot); }
- async dispatchById(id) { const row=(await this.client.query("SELECT result_snapshot FROM dispatches WHERE id=$1 AND status='CONFIRMADO'",[id])).rows[0];return row&&{result:row.result_snapshot}; }
+ async requestDispatches(id) { return (await this.client.query("SELECT result_snapshot,status FROM dispatches WHERE request_id=$1 AND status IN ('CONFIRMADO','ANULADO') ORDER BY confirmed_at,id",[id])).rows.map(r=>({...r.result_snapshot,status:r.status})); }
+ async dispatchById(id) { const row=(await this.client.query("SELECT result_snapshot,status FROM dispatches WHERE id=$1 AND status IN ('CONFIRMADO','ANULADO')",[id])).rows[0];return row&&{result:row.result_snapshot,status:row.status}; }
+ async dispatchCancellation(id){const row=(await this.client.query('SELECT result FROM dispatch_cancellations WHERE dispatch_id=$1',[id])).rows[0];return row&&{result:row.result};}
+ async putCancellation(c){await this.client.query('INSERT INTO dispatch_cancellations(dispatch_id,actor_id,reason,created_at,returns,inventory_version,result) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb)',[c.dispatchId,c.actorId,c.reason,c.createdAt,JSON.stringify(c.returns),c.inventoryRevision,JSON.stringify(c.result)]);await this.client.query("UPDATE dispatches SET status='ANULADO' WHERE id=$1",[c.dispatchId]);}
  async putDispatch(d) {
   await this.client.query("INSERT INTO dispatches(id,request_id,user_id,idempotency_key,payload_hash,status,created_at,confirmed_at,code,recipient,notes,actor_snapshot,request_snapshot,result_snapshot,inventory_version) VALUES($1,$2,$3,$4,$5,'BORRADOR',$6,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13)",[d.id,d.requestId,d.userId,d.operationId,d.payloadHash,d.createdAt,d.code,d.recipient,d.notes,JSON.stringify(d.actorSnapshot),JSON.stringify(d.requestSnapshot),JSON.stringify(d.result),d.result.inventoryRevision]);
   for(const i of d.items){await this.client.query('INSERT INTO dispatch_items(id,dispatch_id,request_item_id,quantity,unit,allocations,product_snapshot,base_quantity,base_unit) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9)',[i.id,d.id,i.requestItemId,i.quantity,i.unit,JSON.stringify(i.allocations),JSON.stringify(i.productSnapshot),i.baseQuantity,i.baseUnit]);for(const [index,fact] of i.allocationFacts.entries())await this.client.query('INSERT INTO public.dispatch_allocation_facts(dispatch_item_id,ordinal,numerator,denominator,capacity) VALUES($1,$2,$3,$4,$5)',[i.id,index+1,fact.numerator,fact.denominator,fact.capacity]);await this.client.query('INSERT INTO dispatch_inventory_links(dispatch_item_id,output_id) VALUES($1,$2)',[i.id,i.outputId]);}

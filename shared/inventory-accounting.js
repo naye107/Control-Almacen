@@ -7,6 +7,7 @@ function isLegacyExpired(p){return p.expired===true&&!Object.hasOwn(p,'openingEx
 function quantity(o){return Q.read(o.quantity||0);}
 // Prices are optional for legacy stock. Null means unpriced, never zero cost.
 function price(o,prefix=''){
+ if(o.returnOfOutput&&Object.hasOwn(o,'returnCost'))return o.returnCost===null?null:Q.read(o.returnCost);
  const raw=o[prefix+'unitPrice'];if(raw===undefined||raw===null||raw==='')return null;
  const value=Q.read(raw),currency=o[prefix+'currency']||'PEN';
  if(currency==='PEN')return value;
@@ -18,15 +19,17 @@ function ledger(state,product,day=today()){
  const stockDate=String(product.openingDate||'');
  function receive(id,amount,cost,expiry,date,lot){qty=Q.add(qty,amount);if(amount.n>0n){if(cost===null)known=false;else value=Q.add(value,Q.mul(amount,cost));lots.push({id,remaining:amount,expiry:expiry||'',date,lot:lot||'',unitPrice:cost});}}
  if(!stockDate||stockDate<=day)receive('opening:'+product.id,Q.read(product.openingStock||0),openingPrice(product),product.openingExpiryDate,stockDate,'Stock inicial');
- const events=[...state.purchases.filter(x=>x.productId===product.id).map((x,index)=>({x,kind:'purchase',index})),...state.outputs.filter(x=>x.productId===product.id).map((x,index)=>({x,kind:'output',index}))].filter(e=>e.x.date<=day).sort((a,b)=>a.x.date.localeCompare(b.x.date)||(a.kind===b.kind?a.index-b.index:a.kind==='purchase'?-1:1));
+ const order=e=>e.kind==='output'?e.index*2+1:e.x.returnOfOutput?e.x.returnSequence*2:-1;
+ const events=[...state.purchases.filter(x=>x.productId===product.id).map((x,index)=>({x,kind:'purchase',index})),...state.outputs.map((x,index)=>({x,kind:'output',index})).filter(e=>e.x.productId===product.id)].filter(e=>e.x.date<=day).sort((a,b)=>a.x.date.localeCompare(b.x.date)||order(a)-order(b)||a.index-b.index);
  for(const {x,kind} of events){const amount=quantity(x);
   if(kind==='purchase'){const cost=price(x);purchases.set(x.id,{unitPrice:cost,total:cost===null?null:Q.mul(amount,cost)});receive(x.id,amount,cost,x.expiryDate,x.date,x.lot);continue;}
   const average=known&&qty.n>0n?Q.div(value,qty):null,total=average===null?null:Q.mul(amount,average);outputs.set(x.id,{unitPrice:average,total});
-  let remaining=amount;
+  let remaining=amount;const consumed=[];
   // Earliest expiry first; undated stock last. Existing historical issues remain
   // represented rather than silently removing quantities from the stock ledger.
   const candidates=lots.filter(l=>l.remaining.n>0n).sort((a,b)=>Number(expired(a.expiry,x.date))-Number(expired(b.expiry,x.date))||(a.expiry||'9999').localeCompare(b.expiry||'9999')||a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
-  for(const l of candidates){const used=Q.min(l.remaining,remaining);l.remaining=Q.sub(l.remaining,used);remaining=Q.sub(remaining,used);if(!remaining.n)break;}
+  for(const l of candidates){const used=Q.min(l.remaining,remaining);if(used.n)consumed.push({id:l.id,quantity:used,expiry:l.expiry,lot:l.lot});l.remaining=Q.sub(l.remaining,used);remaining=Q.sub(remaining,used);if(!remaining.n)break;}
+  outputs.get(x.id).lots=consumed;
   shortage=Q.add(shortage,remaining);qty=Q.sub(qty,amount);if(total!==null)value=Q.sub(value,total);if(qty.n===0n){value=Q.zero;known=true;}if(qty.n<0n)known=false;
  }
  let usable=Q.zero,expiredQty=Q.zero,undated=Q.zero;const remainingLots=lots.filter(l=>l.remaining.n>0n);

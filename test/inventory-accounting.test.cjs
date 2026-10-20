@@ -45,6 +45,14 @@ test('dispatch availability and allocation exclude expired quantities',()=>{cons
 
 test('money rounds once at display instead of losing fractions in every movement',()=>{assert.equal(A.money(Q.read('0.005')),'0.01');assert.equal(A.money(Q.read('0.004')),'0.00');assert.equal(A.money(Q.q(1,3)),'0.33');assert.equal(A.validDate('2028-02-29'),true);assert.equal(A.validDate('2026-02-29'),false);});
 
+test('a return restores exact cost and expiry without changing earlier issues on its day',()=>{
+ const product=p();product.openingStock=2;product.openingUnitPrice=1;const s=state(product);s.outputs=[out('old','2026-01-01',1),out('today','2026-01-02',1)];s.purchases=[buy('b','2026-01-02',1,2)];
+ const before=A.ledger(s,product,'2026-01-02');assert.equal(A.money(before.outputs.get('today').total),'1.50');
+ s.purchases.push({...buy('return','2026-01-02',1,null),returnOfOutput:'old',returnOfDispatch:'d',returnSequence:2,returnCost:Q.json(Q.read(1))});
+ const after=A.ledger(s,product,'2026-01-02');assert.equal(A.money(after.outputs.get('today').total),'1.50');assert.equal(A.money(after.value),'2.50');assert.equal(A.number(after.quantity),2);
+ s.outputs.push(out('later','2026-01-02',1));assert.equal(A.money(A.ledger(s,product,'2026-01-02').outputs.get('later').total),'1.25');
+});
+
 test('real service requests and dispatches cannot use an expired lot',async t=>{
  const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),{FileStore}=require('../src/store'),{Services}=require('../src/services'),{digest}=require('../src/security');
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'japurima-lots-')),store=new FileStore(dir);await store.init();t.after(()=>store.close());const services=new Services(store);await services.init();const password=crypto.randomBytes(24).toString('hex');await services.createUser({username:'lot_admin',role:'ADMINISTRADOR',password},null,true);const login=await services.login('lot_admin',password),hash=digest(login.token);

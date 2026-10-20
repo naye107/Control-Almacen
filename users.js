@@ -12,7 +12,7 @@ async function renderUsers() {
   for(const user of users) {
    const row=document.createElement('tr');
    for(const value of [user.username,user.role,user.active?'Activo':'Inactivo']) {const cell=document.createElement('td');cell.textContent=value;row.append(cell);}
-   const actions=document.createElement('td');
+   const actions=document.createElement('td');actions.className='user-actions';
    function action(label,data) {const button=document.createElement('button');button.type='button';button.className='text-button';button.textContent=label;button.addEventListener('click',async()=>{try{await userApi('/api/users/'+user.id,'PATCH',data);message.textContent='Usuario actualizado. Sus sesiones fueron revocadas.';await renderUsers();}catch(e){message.textContent=e.message;}});actions.append(button);}
    action(user.active?'Desactivar':'Activar',{active:!user.active});
    const roleSelect=document.createElement('select');roleSelect.setAttribute('aria-label','Rol de '+user.username);
@@ -20,7 +20,9 @@ async function renderUsers() {
    const saveRole=document.createElement('button');saveRole.type='button';saveRole.className='text-button';saveRole.textContent='Guardar rol';saveRole.addEventListener('click',async()=>{try{await userApi('/api/users/'+user.id,'PATCH',{role:roleSelect.value});message.textContent='Rol actualizado. Sus sesiones fueron revocadas.';await renderUsers();}catch(e){message.textContent=e.message;roleSelect.value=user.role;}});actions.append(roleSelect,saveRole);
    const password=document.createElement('input');password.type='password';password.minLength=12;password.maxLength=256;password.placeholder='Nueva contrasena';password.autocomplete='new-password';password.setAttribute('aria-label','Nueva contrasena para '+user.username);
    const reset=document.createElement('button');reset.type='button';reset.className='text-button';reset.textContent='Cambiar contrasena';reset.addEventListener('click',async()=>{try{await userApi('/api/users/'+user.id,'PATCH',{password:password.value});password.value='';message.textContent='Contrasena cambiada. Sesiones revocadas.';}catch(e){password.value='';message.textContent=e.message;}});
-   actions.append(password,reset);row.append(actions);table.append(row);
+   const roleGroup=document.createElement('div');roleGroup.className='user-action-group';roleGroup.append(roleSelect,saveRole);
+   const passwordGroup=document.createElement('div');passwordGroup.className='user-action-group';passwordGroup.append(password,reset);
+   actions.append(roleGroup,passwordGroup);row.append(actions);table.append(row);
   }
  }catch(e){message.textContent=e.message;}
 }

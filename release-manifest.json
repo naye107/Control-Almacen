@@ -1,6 +1,6 @@
 {
-  "version": "1.8.0-rc.1",
-  "purpose": "lots-and-weighted-valuation",
+  "version": "1.8.1-rc.1",
+  "purpose": "dispatch-cancellations-and-users-layout",
   "inventoryIncluded": false,
   "productionApproved": false,
   "files": [
@@ -21,8 +21,8 @@
     },
     {
       "path": "app.js",
-      "bytes": 96308,
-      "sha256": "616f1eb3a03cc0e9c9807a67b0eb8fb59bbfbb8f064a9b61fd3af182508d9be4"
+      "bytes": 96644,
+      "sha256": "a2c14b88c1e5e02f9450eefa0e98d249ac1949468816a5032acc5747f9cda4af"
     },
     {
       "path": "assets/fonts/NotoSans-Bold.ttf",
@@ -66,8 +66,8 @@
     },
     {
       "path": "dispatches.js",
-      "bytes": 16906,
-      "sha256": "9ea891d5b855fed8e22e9070eec1334c9f03d17788f24ea9499561fefe8418fd"
+      "bytes": 19318,
+      "sha256": "e5fc9c92e62eb94dd7afaf5c66f6a7ec8ba0578f496a038ebe5f71d16103fb35"
     },
     {
       "path": "documents.js",
@@ -76,8 +76,8 @@
     },
     {
       "path": "index.html",
-      "bytes": 35912,
-      "sha256": "9a73da656e5659e238463d977ae981b221a9af21b1fdedc4370653f891685e70"
+      "bytes": 36637,
+      "sha256": "47b23534e640d813f74e37da6ebb559c5101ff753d6afafb817023b07dd148b7"
     },
     {
       "path": "migrations/001_phase1.sql",
@@ -117,12 +117,12 @@
     {
       "path": "package-lock.json",
       "bytes": 13176,
-      "sha256": "bb774c625887dc1822fe167204ff608768a158db47dc9a2ed9d2350136ea633d"
+      "sha256": "0f289fd1616fd527bc99f012d50fca5c3b3e5e789bbde38bc9a9be1e67e27d99"
     },
     {
       "path": "package.json",
       "bytes": 460,
-      "sha256": "7395e0bd371d20ba06365445a8b1f7b693d9d9fce2d37fbd1d3bcc36cadc2417"
+      "sha256": "8f68932388a54ab6192cd7b0470efe9f5f5011449e506f079b53b5987b1d2111"
     },
     {
       "path": "public.css",
@@ -176,8 +176,8 @@
     },
     {
       "path": "server.js",
-      "bytes": 14826,
-      "sha256": "6df227c8155ef22b76eee55e3b497ccd7acb88a618a3cb538f2bc9513492b4c1"
+      "bytes": 15207,
+      "sha256": "c11c30cf6cc9e15e99dea8edaa3bbd8e3e1e02ac14d48526c15456b20fc266cc"
     },
     {
       "path": "shared/csv-writer.js",
@@ -216,8 +216,8 @@
     },
     {
       "path": "src/dispatch-service.js",
-      "bytes": 10316,
-      "sha256": "68b699a54cde974ea3cd431f74ef08ec18e948c509291906c07614ff093ee881"
+      "bytes": 13797,
+      "sha256": "a61e3f45c5674a5a4ecc2517f8fbe86793555f095b8e9898a139cd967a847f1c"
     },
     {
       "path": "src/document-service.js",
@@ -236,8 +236,8 @@
     },
     {
       "path": "src/inventory-service.js",
-      "bytes": 11366,
-      "sha256": "80603b513ab905c987ab78bf99190f67e5e7be135a9359cc46ea896090e69f2d"
+      "bytes": 11885,
+      "sha256": "eda113e5d8f64670efcbfefd5a0c7defe230f811e48e060baadcfb1bed08be9c"
     },
     {
       "path": "src/operational-limits.js",
@@ -286,18 +286,18 @@
     },
     {
       "path": "src/store.js",
-      "bytes": 19312,
-      "sha256": "5de856ba9a31504a5caed71a3c98cfcbd910493d6665d1d4f8ee572f776bf779"
+      "bytes": 20296,
+      "sha256": "1047919b93cc025e3210ef6eef136a0cbbde2baaa117c9ad421d6ac7bebde9fe"
     },
     {
       "path": "styles.css",
-      "bytes": 18873,
-      "sha256": "0bd1fb7c91aa85767fb1abf0dd9df7d6b8e8ab02fa57ec15877d1d4d0344904e"
+      "bytes": 20242,
+      "sha256": "3a351f712dd42dda54b5757402f2f69b793251984c947395bd0a1689c00cda12"
     },
     {
       "path": "test/candidate.test.cjs",
-      "bytes": 1912,
-      "sha256": "42d13abf2a37e302e3a415e49aa87841d924e69e1c1b25c24af8c525e8f0af4f"
+      "bytes": 1924,
+      "sha256": "d18428f0d9f5a2424ef750b2945dc39df784fe0e16ac7396c14cc902a7583364"
     },
     {
       "path": "test/roles.test.cjs",
@@ -306,8 +306,8 @@
     },
     {
       "path": "users.js",
-      "bytes": 3519,
-      "sha256": "03cee212a3ffd486e6e03db2b98b989111e5a99ea3e3eca5ae2607d58c6fbc27"
+      "bytes": 3824,
+      "sha256": "aa382116e9247a40d3582d624212ea2b65bd2f58a128b9d981b2526ca1fc1df8"
     },
     {
       "path": ".gitattributes",
@@ -331,18 +331,33 @@
     },
     {
       "path": "shared/inventory-accounting.js",
-      "bytes": 4545,
-      "sha256": "6f9dd1929378ed1e1adeea7a79318637481e00f375bdbfb979ade044dfc207e5"
+      "bytes": 4847,
+      "sha256": "8d973b9fd3bf25a7817ebee9566acb1f5de7563928911d1bfac07164b9d71fec"
     },
     {
       "path": "test/inventory-accounting.test.cjs",
-      "bytes": 8292,
-      "sha256": "fc29d777fca41940265d79dec21665a2f39616ec95451ad8aeb63e164a81f5a9"
+      "bytes": 9180,
+      "sha256": "efda9f4b9ee2dbcb08fecefa341f011e66c8e7a56dc22f53eda7415adf825d38"
     },
     {
       "path": "docs/lots-and-valuation.md",
       "bytes": 4158,
       "sha256": "f5db09fc6f7ddff597ff9a0b6aa37a29bdb8050286daa2c2318f3fef654a81f7"
+    },
+    {
+      "path": "migrations/008_dispatch_cancellations.sql",
+      "bytes": 7047,
+      "sha256": "8b7914eaf224e2eb16912ec3fdfba022528ea5735db71ecc0a1c14eff0908918"
+    },
+    {
+      "path": "test/dispatch-cancellation.test.cjs",
+      "bytes": 6973,
+      "sha256": "4bb2058e50a83d546c7b81baf80a5e24d5c0b5c5de07bbdcef2983d2334b810e"
+    },
+    {
+      "path": "docs/dispatch-cancellations.md",
+      "bytes": 2596,
+      "sha256": "275080cc4ced33f9410544a49fecdf4e490bb86c7957e0fcae8fc3dbeaf55c39"
     }
   ]
 }

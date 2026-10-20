@@ -35,6 +35,12 @@ function legacyMatches(existing,input){
  const canonical=items=>JSON.stringify(items.map(i=>({productId:i.productId,presentation:i.presentation,quantity:i.quantity,unit:i.unit})).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
  return existing.requester===input.requester&&existing.destination===input.destination&&existing.notes===(input.notes||'')&&Array.isArray(input.items)&&canonical(existing.items)===canonical(input.items);
 }
+function materialize(normalized,state){return normalized.items.map((item,index)=>{
+    const product=state.products.find(p=>p.id===item.productId);if(!product||(!rules.eligible(product,normalized.category)||!availableProduct(state,product)))throw new AppError(422,'PRODUCT_NOT_AVAILABLE_IN_CATEGORY');
+    const calculation=rules.calculateLine({...item,category:normalized.category,containerCount:normalized.containerCount,product});
+    return {id:crypto.randomUUID(),lineNumber:index+1,productId:product.id,productSnapshot:{name:product.name,unit:product.unit,presentation:product.presentation,requestCategory:product.requestCategory,quantityBasis:product.quantityBasis},presentation:product.presentation,unit:item.unit,...calculation};
+   });}
+async function view(tx,request){const summary=require('./dispatch-service').progress(request,await tx.delivered(request.id)),history=await tx.requestDispatches(request.id),result=publicRequest(request);result.status=summary.status;result.revision=String(request.dispatchRevision||1);result.canEdit=request.requestVersion===2&&['PENDIENTE','REGISTRADA','APROBADA'].includes(request.status)&&!history.length;result.canDelete=['PENDIENTE','REGISTRADA','APROBADA'].includes(request.status)&&!history.some(d=>d.status==='CONFIRMADO');result.items=result.items.map((i,index)=>({...i,productId:request.items[index].productId,deliveredQuantity:summary.items[index].deliveredQuantity,pendingQuantity:summary.items[index].pendingQuantity}));return result;}
 class RequestService{
  constructor(store){this.store=store;}
  async catalog(category){if(category&&!Object.hasOwn(rules.CATEGORIES,category))throw new AppError(422,'INVALID_CATEGORY');const {state}=await this.store.transact(tx=>tx.getInventory());return state.products.filter(p=>rules.eligible(p,category)&&availableProduct(state,p)).map(p=>({id:p.id,name:p.name,presentation:p.presentation,unit:p.unit,requestCategory:p.requestCategory,quantityBasis:p.quantityBasis,unitOptions:rules.unitOptions(p)}));}
@@ -50,16 +56,28 @@ class RequestService{
     const normalized=normalizeInput(input);if(existing.operationId.toLowerCase()!==operationId||!equal(existing.payloadHash,digest(JSON.stringify(normalized))))throw new AppError(409,'IDEMPOTENCY_CONFLICT');return publicRequest(existing);
    }
    const normalized=normalizeInput(input);
-   const items=normalized.items.map((item,index)=>{
-    const product=inventory.state.products.find(p=>p.id===item.productId);if(!product||(!rules.eligible(product,normalized.category)||!availableProduct(inventory.state,product)))throw new AppError(422,'PRODUCT_NOT_AVAILABLE_IN_CATEGORY');
-    const calculation=rules.calculateLine({...item,category:normalized.category,containerCount:normalized.containerCount,product});
-    return {id:crypto.randomUUID(),lineNumber:index+1,productId:product.id,productSnapshot:{name:product.name,unit:product.unit,presentation:product.presentation,requestCategory:product.requestCategory,quantityBasis:product.quantityBasis},presentation:product.presentation,unit:item.unit,...calculation};
-   });
+   const items=materialize(normalized,inventory.state);
    const request={id:crypto.randomUUID(),code,privateKeyHash:digest(input.privateKey),...normalized,items,operationId,payloadHash:digest(JSON.stringify(normalized)),status:'PENDIENTE',createdAt:new Date().toISOString()};
    await tx.putRequest(request);await tx.audit({action:'REQUEST_PUBLIC_CREATE',entityId:request.id,details:{requestVersion:2,category:request.category,itemCount:items.length}});return publicRequest(request);
   });}catch(error){if(error.name==='RequestValidationError')throw new AppError(422,error.message);throw error;}
  }
- async lookup(code,key){if(typeof code!=='string'||code.length>40||typeof key!=='string'||key.length>128)throw new AppError(404,'REQUEST_NOT_FOUND');return this.store.transact(async tx=>{const request=await tx.findRequest(code.trim().toUpperCase(),'share');if(!request||!equal(request.privateKeyHash,digest(key)))throw new AppError(404,'REQUEST_NOT_FOUND');const summary=require('./dispatch-service').progress(request,await tx.delivered(request.id));const result=publicRequest(request);if(summary.items.some(i=>i.deliveredQuantity!=='0'))result.status=summary.status;result.items=result.items.map((i,index)=>({...i,deliveredQuantity:summary.items[index].deliveredQuantity,pendingQuantity:summary.items[index].pendingQuantity}));return result;});}
+ async lookup(code){if(typeof code!=='string'||!code.trim()||code.length>40)throw new AppError(404,'REQUEST_NOT_FOUND');return this.store.transact(async tx=>{const r=await tx.findRequest(code.trim().toUpperCase(),'share');if(!r)throw new AppError(404,'REQUEST_NOT_FOUND');return view(tx,r);});}
+ async manage(input){
+  object(input,['code','revision','operationId','action','changes']);
+  if(typeof input.code!=='string'||!input.code.trim()||input.code.length>40||!UUID.test(input.operationId||''))throw new AppError(422,'INVALID_REQUEST_FIELDS');
+  require('./integrity').expectedVersion(input.revision);if(!['edit','delete'].includes(input.action)||input.action==='delete'&&input.changes!==undefined)throw new AppError(422,'INVALID_REQUEST_FIELDS');
+  let normalized=null;if(input.action==='edit')normalized=normalizeInput({...input.changes,operationId:input.operationId,privateKey:'0'.repeat(64)});
+  try{return await this.store.transact(async tx=>{
+   const inventory=await tx.getInventory(true),r=await tx.findRequest(input.code.trim().toUpperCase(),true);if(!r)throw new AppError(404,'REQUEST_NOT_FOUND');
+   const payloadHash=digest(JSON.stringify({requestId:r.id,revision:input.revision,action:input.action,changes:normalized})),operationId=input.operationId.toLowerCase(),replay=await tx.getRequestAction(operationId);
+   if(replay){if(replay.requestId!==r.id||replay.payloadHash!==payloadHash)throw new AppError(409,'IDEMPOTENCY_CONFLICT');return replay.result;}
+   if(String(r.dispatchRevision||1)!==input.revision)throw new AppError(409,'REQUEST_CONFLICT');
+   const before=await view(tx,r);if(input.action==='edit'?!before.canEdit:!before.canDelete)throw new AppError(409,'REQUEST_NOT_EDITABLE');
+   if(input.action==='edit')await tx.replaceRequest({...r,...normalized,items:materialize(normalized,inventory.state)},input.revision);else await tx.removeRequest(r.id,input.revision);
+   const result=await view(tx,await tx.getRequest(r.id));await tx.putRequestAction({operationId,requestId:r.id,payloadHash,result});await tx.audit({action:input.action==='edit'?'REQUEST_PUBLIC_EDIT':'REQUEST_PUBLIC_DELETE',entityId:r.id,details:{code:r.code,operationId,before,after:result}});return result;
+  });}catch(error){if(error.name==='RequestValidationError')throw new AppError(422,error.message);throw error;}
+ }
+
 
 }
 module.exports={RequestService,publicRequest,normalizeInput};

@@ -45,7 +45,7 @@ class FileStore {
  async close() { await this.queue; if(this.handle) { await this.handle.close(); this.handle=null; await fs.unlink(this.lock); } }
 }
 class FileTransaction {
- constructor(doc) { this.doc=doc; this.dirty=false; }
+ constructor(doc) { this.doc=doc; this.dirty=false;const Code=require('../shared/request-code');let n=BigInt(doc.requestCounter||0);for(const r of [...doc.requests].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id))){if(!r.requestNumber)r.requestNumber=(++n).toString();else if(BigInt(r.requestNumber)>n)n=BigInt(r.requestNumber);r.legacyCode||=r.code;r.code=Code.format(r.requestNumber);}doc.requestCounter=n.toString(); }
  async getInventory() { return structuredClone(this.doc.inventory); }
  async saveInventory(state,expected) { const version=expectedVersion(expected);finiteTree(state);if(this.doc.inventory.version!==version)throw new AppError(409,'STATE_CONFLICT');const next=(BigInt(version)+1n).toString();this.doc.inventory={state:structuredClone(state),version:next};this.dirty=true;return next; }
  async referencedRequestProducts() { return [...new Set(this.doc.requests.flatMap(r=>r.items.map(i=>i.productId)))]; }
@@ -76,24 +76,28 @@ class FileTransaction {
  async updateRequestDispatch(id,status,revision) { const r=await this.getRequest(id);r.status=status;r.dispatchRevision=revision;this.dirty=true; }
  async requestPage(filters) { const {filterRequests}=require('./dispatch-query');const rows=filterRequests(this.doc.requests,filters);return {total:rows.length,requests:structuredClone(rows.slice((filters.page-1)*filters.pageSize,filters.page*filters.pageSize))}; }
  async listAudit(limit=100) { return structuredClone(this.doc.audit.slice(-limit).reverse()); }
- async putRequest(request) { this.doc.requests.push(request);this.dirty=true; }
- async findRequest(code) { return this.doc.requests.find(r=>r.code===code); }
+ async putRequest(request) { const Code=require('../shared/request-code');this.doc.requestCounter=(BigInt(this.doc.requestCounter||0)+1n).toString();request.requestNumber=this.doc.requestCounter;request.legacyCode=request.code;request.code=Code.format(request.requestNumber);this.doc.requests.push(request);this.dirty=true; }
+ async findRequest(code) { return this.doc.requests.find(r=>r.code===code||r.legacyCode===code||r.requestNumber===require('../shared/request-code').number(code)); }
  async listRequests() { return structuredClone(this.doc.requests.slice(-100).reverse()); }
+ async getRequestAction(id){return (this.doc.requestActions||[]).find(a=>a.operationId===id)||null;}
+ async putRequestAction(a){this.doc.requestActions||=[];this.doc.requestActions.push(a);this.dirty=true;}
+ async replaceRequest(r,revision){const old=await this.getRequest(r.id);if(String(old.dispatchRevision||1)!==revision)throw new AppError(409,'REQUEST_CONFLICT');Object.assign(old,r,{dispatchRevision:(BigInt(revision)+1n).toString(),editRevision:(BigInt(old.editRevision||1)+1n).toString()});this.dirty=true;}
+ async removeRequest(id,revision){const r=await this.getRequest(id);r.status='CANCELADA';r.dispatchRevision=(BigInt(revision)+1n).toString();this.dirty=true;}
 }
 function userFrom(row) { return row && {id:row.id,username:row.username,passwordHash:row.password_hash,role:row.role,active:row.active,createdAt:new Date(row.created_at).toISOString()}; }
 
 function requestFrom(row,itemRows){
   const precise=value=>value===null||value===undefined?null:require('../shared/request-rules').normalize(String(value));
   const items=itemRows.map(i=>({id:i.id,productId:i.product_id,productSnapshot:i.product_snapshot,presentation:i.presentation,quantity:row.request_version===2?precise(i.quantity):Number(i.quantity),unit:i.unit,...(row.request_version===2?{lineNumber:i.line_number,doseQuantity:precise(i.dose_quantity),baseQuantity:precise(i.base_quantity),baseUnit:i.base_unit,dimension:i.dimension}:{})}));
-  return {dispatchRevision:String(row.dispatch_revision),id:row.id,code:row.code,privateKeyHash:row.private_key_hash,requester:row.requester,destination:row.destination,notes:row.notes,status:row.status,createdAt:new Date(row.created_at).toISOString(),items,...(row.request_version===2?{requestVersion:2,category:row.category,crop:row.crop,applicationMode:row.application_mode,containerCount:precise(row.container_count),operationId:row.operation_id,payloadHash:row.payload_hash}:{})};
+  return {dispatchRevision:String(row.dispatch_revision),id:row.id,code:require('../shared/request-code').format(row.request_number)||row.code,legacyCode:row.code,requestNumber:row.request_number==null?null:String(row.request_number),editRevision:String(row.edit_revision||1),privateKeyHash:row.private_key_hash,requester:row.requester,destination:row.destination,notes:row.notes,status:row.status,createdAt:new Date(row.created_at).toISOString(),items,...(row.request_version===2?{requestVersion:2,category:row.category,crop:row.crop,applicationMode:row.application_mode,containerCount:precise(row.container_count),operationId:row.operation_id,payloadHash:row.payload_hash}:{})};
 }
 class PostgresStore {
  constructor(url) { this.pool=createPool(url); }
  async init() {
   // Read-only preflight. Schema changes are performed only by the explicit migration command.
   await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:5000});
-  const result=await this.pool.query({query_timeout:5000,text:"SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql','005_production_hardening.sql','006_integrity_hardening.sql','007_user_roles.sql','008_dispatch_cancellations.sql')"});
-  if(result.rowCount!==8) throw new Error('MIGRATIONS_REQUIRED');
+  const result=await this.pool.query({query_timeout:5000,text:"SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql','005_production_hardening.sql','006_integrity_hardening.sql','007_user_roles.sql','008_dispatch_cancellations.sql','009_request_management.sql')"});
+  if(result.rowCount!==9) throw new Error('MIGRATIONS_REQUIRED');
  }
  async health(){const r=await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:3000});if(r.rowCount!==1)throw new Error('INVENTORY_MISSING');return {storage:'postgresql'};}
  async transact(work,options={}) {
@@ -149,13 +153,17 @@ class PostgresTransaction {
  async requestPage(filters) { const {sqlFilters}=require('./dispatch-query');const query=sqlFilters(filters);const total=(await this.client.query('SELECT count(*)::int AS total FROM requests r WHERE '+query.where,query.args)).rows[0].total;const sql='SELECT r.code FROM requests r WHERE '+query.where+' ORDER BY r.created_at '+(filters.order==='oldest'?'ASC':'DESC')+',r.id '+(filters.order==='oldest'?'ASC':'DESC')+' LIMIT $'+(query.args.length+1)+' OFFSET $'+(query.args.length+2);const rows=(await this.client.query(sql,[...query.args,filters.pageSize,(filters.page-1)*filters.pageSize])).rows;const requests=[];for(const r of rows)requests.push(await this.findRequest(r.code));return {total,requests}; }
  async listAudit(limit=100) { return (await this.client.query('SELECT id,actor_id,action,entity_id,details,created_at FROM audit_events ORDER BY created_at DESC LIMIT $1',[limit])).rows; }
  async putRequest(r) {
-  await this.client.query('INSERT INTO requests(id,code,private_key_hash,requester,destination,notes,status,created_at,request_version,category,crop,application_mode,container_count,operation_id,payload_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)',[r.id,r.code,r.privateKeyHash,r.requester,r.destination,r.notes,r.status,r.createdAt,r.requestVersion??null,r.category??null,r.crop??null,r.applicationMode??null,r.containerCount??null,r.operationId??null,r.payloadHash??null]);
+  const inserted=await this.client.query('INSERT INTO requests(id,code,private_key_hash,requester,destination,notes,status,created_at,request_version,category,crop,application_mode,container_count,operation_id,payload_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING request_number::text',[r.id,r.code,r.privateKeyHash,r.requester,r.destination,r.notes,r.status,r.createdAt,r.requestVersion??null,r.category??null,r.crop??null,r.applicationMode??null,r.containerCount??null,r.operationId??null,r.payloadHash??null]);r.legacyCode=r.code;r.requestNumber=inserted.rows[0].request_number;r.code=require('../shared/request-code').format(r.requestNumber);
   for(const i of r.items)await this.client.query('INSERT INTO request_items(id,request_id,product_id,product_snapshot,presentation,quantity,unit,line_number,dose_quantity,base_quantity,base_unit,dimension) VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12)',[i.id,r.id,i.productId,JSON.stringify(i.productSnapshot),i.presentation,i.quantity,i.unit,i.lineNumber??null,i.doseQuantity??null,i.baseQuantity??null,i.baseUnit??null,i.dimension??null]);
  }
  async findRequest(code,lock=false) {
-  const row=(await this.client.query('SELECT * FROM requests WHERE code=$1'+(lock==='share'?' FOR SHARE':lock?' FOR UPDATE':''),[code])).rows[0];if(!row)return null;
+  const row=(await this.client.query('SELECT * FROM requests WHERE (code=$1 OR request_number=$2::bigint)'+(lock==='share'?' FOR SHARE':lock?' FOR UPDATE':''),[code,require('../shared/request-code').number(code)])).rows[0];if(!row)return null;
   const items=(await this.client.query('SELECT * FROM request_items WHERE request_id=$1 ORDER BY line_number NULLS LAST,id',[row.id])).rows;return requestFrom(row,items);
  }
+ async getRequestAction(id){const row=(await this.client.query('SELECT request_id,payload_hash,result FROM request_public_actions WHERE operation_id=$1',[id])).rows[0];return row&&{requestId:row.request_id,payloadHash:row.payload_hash,result:row.result};}
+ async putRequestAction(a){await this.client.query('INSERT INTO request_public_actions(operation_id,request_id,payload_hash,result) VALUES($1,$2,$3,$4::jsonb)',[a.operationId,a.requestId,a.payloadHash,JSON.stringify(a.result)]);}
+ async replaceRequest(r,revision){await this.client.query('SELECT public.replace_pending_request($1,$2,$3::jsonb)',[r.id,revision,JSON.stringify(r)]);}
+ async removeRequest(id,revision){const result=await this.client.query("UPDATE requests SET status='CANCELADA',dispatch_revision=dispatch_revision+1,updated_at=now() WHERE id=$1 AND dispatch_revision=$2",[id,revision]);if(result.rowCount!==1)throw new AppError(409,'REQUEST_CONFLICT');}
  async listRequests() { const rows=(await this.client.query('SELECT code FROM requests ORDER BY created_at DESC LIMIT 100')).rows; const list=[];for(const r of rows)list.push(await this.findRequest(r.code));return list; }
 }
 module.exports = { FileStore, PostgresStore, emptyState, requestFrom };

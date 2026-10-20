@@ -58,6 +58,7 @@ function createServer({store,services,production=false,publicOrigin='',trustProx
    }
    if(route==='/api/public/requests'&&req.method==='POST') {if((await services.session(hash))?.user.role==='SUPERVISOR')throw new AppError(403,'FORBIDDEN');rate(req,'request',60);json(201,await services.registerRequest(await body(req)));return;}
    if(route==='/api/public/requests/status'&&req.method==='POST') {rate(req,'lookup',20);const input=await body(req);if(!input||typeof input!=='object'||Array.isArray(input))throw new AppError(422,'INVALID_REQUEST_FIELDS');json(200,await services.lookupRequest(input.code,input.privateKey));return;}
+   if(route==='/api/public/requests/manage'&&req.method==='POST'){if((await services.session(hash))?.user.role==='SUPERVISOR')throw new AppError(403,'FORBIDDEN');rate(req,'public-request-manage',20);const input=await body(req);rate(req,'public-request-manage-code',10,digest(String(input.code||'').trim().toUpperCase()));json(200,await services.requests.manage(input));return;}
    if(route==='/api/public/requests/pdf'&&req.method==='POST'){if((await services.session(hash))?.user.role==='SUPERVISOR')throw new AppError(403,'FORBIDDEN');rate(req,'public-document',20);const d=await services.documents.publicRequest(await body(req));sendFile(d.pdf,d.filename,'application/pdf',{'X-Document-SHA256':d.sha256});return;}
    if(route.startsWith('/api/')) {
     const session=await services.authenticated(hash);

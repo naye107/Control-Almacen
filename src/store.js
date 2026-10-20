@@ -96,8 +96,8 @@ class PostgresStore {
  async init() {
   // Read-only preflight. Schema changes are performed only by the explicit migration command.
   await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:5000});
-  const result=await this.pool.query({query_timeout:5000,text:"SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql','005_production_hardening.sql','006_integrity_hardening.sql','007_user_roles.sql','008_dispatch_cancellations.sql','009_request_management.sql')"});
-  if(result.rowCount!==9) throw new Error('MIGRATIONS_REQUIRED');
+  const result=await this.pool.query({query_timeout:5000,text:"SELECT version FROM schema_migrations WHERE version IN ('001_phase1.sql','002_public_requests.sql','003_dispatches.sql','004_document_records.sql','005_production_hardening.sql','006_integrity_hardening.sql','007_user_roles.sql','008_dispatch_cancellations.sql','009_request_management.sql','010_fertilization_requests.sql')"});
+  if(result.rowCount!==10) throw new Error('MIGRATIONS_REQUIRED');
  }
  async health(){const r=await this.pool.query({text:'SELECT version FROM inventory_state WHERE id=1',query_timeout:3000});if(r.rowCount!==1)throw new Error('INVENTORY_MISSING');return {storage:'postgresql'};}
  async transact(work,options={}) {

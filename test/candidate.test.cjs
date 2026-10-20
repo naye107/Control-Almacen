@@ -9,7 +9,7 @@ test('production package starts the PostgreSQL server, without demo bootstrap',(
  const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
  assert.match(server,/if\(production\).*DATABASE_URL.*origin\.protocol!==\x27https:\x27/);
  const store=fs.readFileSync(path.join(root,'src/store.js'),'utf8');
- assert.match(store,/009_request_management\.sql/);assert.match(store,/result\.rowCount!==9/);
+ assert.match(store,/010_fertilization_requests\.sql/);assert.match(store,/result\.rowCount!==10/);
  for(const file of ['index.html','public.html'])assert.equal(fs.readFileSync(path.join(root,file),'utf8').includes('<aside class="demo-notice"'),false);
 });
 test('001–006 are byte-identical to the main migration files',()=>{

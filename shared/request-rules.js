@@ -27,10 +27,11 @@ function unitOptions(product){
  return options;
 }
 function convert(quantity,unit,product){const option=unitOptions(product).find(o=>o.unit===unit);if(!option)fail('INCOMPATIBLE_UNIT');if(inventory.isTotalProduct(product)&&unit==='unidad'&&scaled(quantity)%SCALE!==0n)fail('WHOLE_UNITS_REQUIRED');return {baseQuantity:multiply(quantity,option.factor),baseUnit:option.baseUnit,dimension:option.dimension};}
-function calculateLine({category,containerCount,product,doseQuantity,quantity,unit}){
+function calculateLine({category,applicationMode,containerCount,product,doseQuantity,quantity,unit}){
  if(!Object.hasOwn(CATEGORIES,category))fail('INVALID_CATEGORY');
- const total=category==='AGROQUIMICOS'?multiply(doseQuantity,containerCount):normalize(quantity);
- const converted=convert(total,unit,product);return {quantity:total,doseQuantity:category==='AGROQUIMICOS'?normalize(doseQuantity):null,...converted};
+ const dosed=category==='AGROQUIMICOS'&&applicationMode!=='FERTILIZACION';
+ const total=dosed?multiply(doseQuantity,containerCount):normalize(quantity);
+ const converted=convert(total,unit,product);return {quantity:total,doseQuantity:dosed?normalize(doseQuantity):null,...converted};
 }
 function eligible(product,category){return product.active===true&&!accounting.isLegacyExpired(product)&&Object.hasOwn(CATEGORIES,product.requestCategory)&&(!category||product.requestCategory===category);}
 return {CATEGORIES,normalize,multiply,convert,calculateLine,unitOptions,eligible};

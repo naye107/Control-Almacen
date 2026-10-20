@@ -1,6 +1,6 @@
 {
-  "version": "1.9.0-rc.1",
-  "purpose": "public-request-management",
+  "version": "1.9.1-rc.1",
+  "purpose": "application-and-fertilization-requests",
   "inventoryIncluded": false,
   "productionApproved": false,
   "files": [
@@ -117,12 +117,12 @@
     {
       "path": "package-lock.json",
       "bytes": 13176,
-      "sha256": "638d529e8fd98ffae027baa8c85a8fae4a0cabf2670404e70678b0143f379e23"
+      "sha256": "94c29aa36bf05ddcc7b1869eab64c32c16c9d639b27c478c10ee6ec35b08739f"
     },
     {
       "path": "package.json",
       "bytes": 460,
-      "sha256": "b1cf9e88565896e8ed837be08e2d49c7d344f21320045938881173f9a99fe2aa"
+      "sha256": "d97ac15fa2ca7e8483045a0c99d6c179a7f93541333693baf77db201d1b469e9"
     },
     {
       "path": "public.css",
@@ -131,13 +131,13 @@
     },
     {
       "path": "public.html",
-      "bytes": 12459,
-      "sha256": "061a005c32374a25be8d411283638cf5d676c5e6568d06adc185f1a8cb62719d"
+      "bytes": 12751,
+      "sha256": "397484faefb3bfc7db3d82604551411c1961e8a068966eed25bd63fb718c564c"
     },
     {
       "path": "public.js",
-      "bytes": 26587,
-      "sha256": "7e58ddfc6ff3a54f6da025dc6c991090b2f5820dfea9f9351dc07e20451e4a8c"
+      "bytes": 27694,
+      "sha256": "4a32a1501e05d9bf7ea528de2800b56da5fa5d5706f28d60b4a095de0a4dd9ef"
     },
     {
       "path": "README.txt",
@@ -196,8 +196,8 @@
     },
     {
       "path": "shared/request-rules.js",
-      "bytes": 3675,
-      "sha256": "2d2896c733c36585b50325e4ba0a1c33e724ad483acfa9ce76c2d14a880ed5d6"
+      "bytes": 3726,
+      "sha256": "2a8552fe61754eb02b9258b2152d4565b7f9ddde928a4d626eb4e7eb70154d25"
     },
     {
       "path": "shared/xlsx-writer.js",
@@ -221,8 +221,8 @@
     },
     {
       "path": "src/document-service.js",
-      "bytes": 4797,
-      "sha256": "8fabe572fe27a78bd2d9e35316db1a74647ad8a49a4265840de0943ba0902eb6"
+      "bytes": 4907,
+      "sha256": "362825dbcbb487954b740e9151dfb6c4e3f81d850db01af6fa2c606d08fe50e1"
     },
     {
       "path": "src/errors.js",
@@ -246,8 +246,8 @@
     },
     {
       "path": "src/pdf/document-layout.js",
-      "bytes": 5830,
-      "sha256": "4be74287e37bebeb3a010795eea6466255ca99dec508bcfcf363b7a76792a94c"
+      "bytes": 5947,
+      "sha256": "236fa092f5008fecc3ba52f575c39338474177ca710ae51a3514d6e907b98f97"
     },
     {
       "path": "src/permissions.js",
@@ -266,8 +266,8 @@
     },
     {
       "path": "src/request-service.js",
-      "bytes": 10543,
-      "sha256": "6338842971cc2e1221fa8aac21c23ee54fef9d91d680b3bf7c1967b5911b448b"
+      "bytes": 10845,
+      "sha256": "95e40707ea87252ca26e23d3c2fddd78a282149ef9927acc542b7c4f6c3207c1"
     },
     {
       "path": "src/security.js",
@@ -286,8 +286,8 @@
     },
     {
       "path": "src/store.js",
-      "bytes": 23107,
-      "sha256": "34a6046a36e6e7c3ab645df33597a5a9ad13942a2d5731ba619c442af318d7a9"
+      "bytes": 23141,
+      "sha256": "961e24c47da76410728b8fb322e1b70360ef4eef525a186412b55a9596d1e3a9"
     },
     {
       "path": "styles.css",
@@ -296,8 +296,8 @@
     },
     {
       "path": "test/candidate.test.cjs",
-      "bytes": 1920,
-      "sha256": "604dd62da0fa9d5ca2e2fba980e266b24754bcf005ce451c712f8ad3afe09f28"
+      "bytes": 1925,
+      "sha256": "c3c9c4caca864c14bdd50e0fc6b0a201893a7ff4431dc99fac59e310aac1df13"
     },
     {
       "path": "test/roles.test.cjs",
@@ -378,6 +378,21 @@
       "path": "docs/request-management.md",
       "bytes": 2898,
       "sha256": "14d9974970bfbfe0d11f47d5cc432c49bbbe16b8e1af26562a5dc215a35bf12f"
+    },
+    {
+      "path": "migrations/010_fertilization_requests.sql",
+      "bytes": 1032,
+      "sha256": "3e1e635ed2e88fa494f92376a7e319f362c2ec47b6818abf60a1cf4ef985ad55"
+    },
+    {
+      "path": "test/fertilization.test.cjs",
+      "bytes": 4970,
+      "sha256": "e6a7cdcf470f819c27edde47075709f6b01243191a209e958f4e139633a9f78a"
+    },
+    {
+      "path": "docs/fertilization-requests.md",
+      "bytes": 1669,
+      "sha256": "5b5e59c48a9826f1bc8700491bd5f08196b9fc02a3dfc51bb9bc696dfcc7720f"
     }
   ]
 }

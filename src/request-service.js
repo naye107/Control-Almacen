@@ -19,14 +19,14 @@ function normalizeInput(input){
  if(typeof input.operationId!=='string'||!UUID.test(input.operationId)||!/^[A-Za-z0-9_-]{32,128}$/.test(input.privateKey||''))throw new AppError(422,'PRIVATE_KEY_AND_OPERATION_REQUIRED');
  if(!Object.hasOwn(rules.CATEGORIES,input.category))throw new AppError(422,'INVALID_CATEGORY');
  const agro=input.category==='AGROQUIMICOS';const result={requestVersion:2,category:input.category,requester:cleanText(input.requester,true,150),destination:cleanText(input.destination,true,150),notes:cleanText(input.notes,false,500),crop:null,applicationMode:null,containerCount:null};
- if(agro){result.crop=cleanText(input.crop,true,150);if(!['CILINDROS','TANQUES'].includes(input.applicationMode))throw new AppError(422,'INVALID_APPLICATION_MODE');result.applicationMode=input.applicationMode;result.containerCount=rules.normalize(input.containerCount);if(Number(result.containerCount)>1000000)throw new AppError(422,'CONTAINER_COUNT_LIMIT');}
+ if(agro){result.crop=cleanText(input.crop,true,150);if(!['CILINDROS','TANQUES','FERTILIZACION'].includes(input.applicationMode))throw new AppError(422,'INVALID_APPLICATION_MODE');result.applicationMode=input.applicationMode;if(input.applicationMode==='FERTILIZACION'){if(input.containerCount!==undefined&&input.containerCount!==null&&input.containerCount!=='')throw new AppError(422,'FIELDS_NOT_ALLOWED_FOR_CATEGORY');}else{result.containerCount=rules.normalize(input.containerCount);if(Number(result.containerCount)>1000000)throw new AppError(422,'CONTAINER_COUNT_LIMIT');}}
  else if([input.crop,input.applicationMode,input.containerCount].some(v=>v!==undefined&&v!==null&&v!==''))throw new AppError(422,'FIELDS_NOT_ALLOWED_FOR_CATEGORY');
  if(!Array.isArray(input.items)||input.items.length<1||input.items.length>50)throw new AppError(422,'INVALID_REQUEST_ITEMS');
  const seen=new Set();result.items=input.items.map(item=>{
   object(item,['productId','unit','doseQuantity','quantity']);
   if(typeof item.productId!=='string'||!item.productId||item.productId.length>128||seen.has(item.productId))throw new AppError(422,'DUPLICATE_OR_INVALID_PRODUCT');seen.add(item.productId);
   const unit=cleanText(item.unit,true,50);
-  if(agro){if(item.quantity!==undefined)throw new AppError(422,'TOTAL_IS_SERVER_CALCULATED');return {productId:item.productId,unit,doseQuantity:rules.normalize(item.doseQuantity)};}
+  if(agro&&result.applicationMode!=='FERTILIZACION'){if(item.quantity!==undefined)throw new AppError(422,'TOTAL_IS_SERVER_CALCULATED');return {productId:item.productId,unit,doseQuantity:rules.normalize(item.doseQuantity)};}
   if(item.doseQuantity!==undefined&&item.doseQuantity!==null)throw new AppError(422,'DOSE_NOT_ALLOWED');return {productId:item.productId,unit,quantity:rules.normalize(item.quantity)};
  });return result;
 }
@@ -37,7 +37,7 @@ function legacyMatches(existing,input){
 }
 function materialize(normalized,state){return normalized.items.map((item,index)=>{
     const product=state.products.find(p=>p.id===item.productId);if(!product||(!rules.eligible(product,normalized.category)||!availableProduct(state,product)))throw new AppError(422,'PRODUCT_NOT_AVAILABLE_IN_CATEGORY');
-    const calculation=rules.calculateLine({...item,category:normalized.category,containerCount:normalized.containerCount,product});
+    const calculation=rules.calculateLine({...item,category:normalized.category,applicationMode:normalized.applicationMode,containerCount:normalized.containerCount,product});
     return {id:crypto.randomUUID(),lineNumber:index+1,productId:product.id,productSnapshot:{name:product.name,unit:product.unit,presentation:product.presentation,requestCategory:product.requestCategory,quantityBasis:product.quantityBasis},presentation:product.presentation,unit:item.unit,...calculation};
    });}
 async function view(tx,request){const summary=require('./dispatch-service').progress(request,await tx.delivered(request.id)),history=await tx.requestDispatches(request.id),result=publicRequest(request);result.status=summary.status;result.revision=String(request.dispatchRevision||1);result.canEdit=request.requestVersion===2&&['PENDIENTE','REGISTRADA','APROBADA'].includes(request.status)&&!history.length;result.canDelete=['PENDIENTE','REGISTRADA','APROBADA'].includes(request.status)&&!history.some(d=>d.status==='CONFIRMADO');result.items=result.items.map((i,index)=>({...i,productId:request.items[index].productId,deliveredQuantity:summary.items[index].deliveredQuantity,pendingQuantity:summary.items[index].pendingQuantity}));return result;}
